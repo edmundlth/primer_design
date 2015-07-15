@@ -9,7 +9,7 @@ setup(
     author_email='elau1@student.unimelb.edu.au',
     packages=['primer_design'],
     entry_points={
-        'console_scripts': ['primer_design = primer_desig3:main']
+        'console_scripts': ['primer_design = primer_design.primer_desig3:main']
     },
     url='https://github.com/edmundlth/primer_design',
     install_requires=[],
