@@ -110,7 +110,7 @@ def visualise(template,tiling,left,right,primer_length):
     for i in range(0,len(template),chunk_size):
         print('   ',upper[i: i+chunk_size],'   ')
         print("5'>",template[i: i+chunk_size],">3'")
-        print('   ',lower[i: i + chunk_size],'   ')
+        print('   ',lower[i: i+chunk_size],'   ')
 ##
 ##    splitted_uppers = []
 ##    splitted_templates = []
