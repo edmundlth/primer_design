@@ -59,7 +59,7 @@ PRIMER_LENGTH :: Int
 
 """
 
-from utils import score, visualise
+from primer_design.utils import score, visualise
 from time import time
 from random import randint
 

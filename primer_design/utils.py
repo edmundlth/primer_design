@@ -176,9 +176,10 @@ def score(template,tile,primer_length):
 
 def entropy_score(primer):
     """ H = sum( -pi * log pi) for all i) """
+    primer = primer.upper()
     return sum(
         -p*math.log(p) for p in
-        [primer.count(i)/float(len(primer)) for i in set(primer.upper())])
+        [primer.count(i)/float(len(primer)) for i in set(primer)])
     
 def gc_score(primer):
     primer = primer.upper()
@@ -233,4 +234,7 @@ def num_complement(seq1,seq2):
 
 def is_complement(base1,base2):
     complement_dic = {'A':'T','G':'C','T':'A','C':'G'}
-    return complement_dic[base1] == base2
+    if base1 in complement_dic:
+        return complement_dic[base1] == base2
+    else:
+        return False
