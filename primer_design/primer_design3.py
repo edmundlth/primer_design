@@ -123,7 +123,7 @@ def design(template, tile_sizes, pos, length):
                 best_combination = [prefix_pos , size] +\
                                    best_suffix_design[0][1:]
                 best_score = new_score
-    print("Best primer score = %f" %best_score)
+    print("Best score = %f" %best_score)
     return best_combination
                                                
 
@@ -209,18 +209,19 @@ if __name__ == "__main__":
     template = template3
     tile_sizes = tile_sizes3
     template_length = template_length3
-    pos = max(tile_sizes)
+    pos = max(tile_sizes) + PRIMER_LENGTH
     
     before = time()
     tiling = design(template, tile_sizes, pos, template_length)
     after = time()
 
-##    visualise(template,tiling, pos, pos + template_length, PRIMER_LENGTH )
-    print("The corresponding tiling in the"
-          "format [start_pos, tile sizes is: ",
-          tiling)
+    visualise(template,tiling, pos, pos + template_length, PRIMER_LENGTH )
+    print("The corresponding tiling in the\n"
+          "format [start_pos, tile sizes] is: \n\n",
+          tiling, '\n')
     print("CALLS = %i "%CALLS)
     print("MEMO call = %i"%MEMO_CALLS)
     print("MEMO length = number of new CALLS = %i" %len(MEMO))
     print("Time_taken = %f" %(after - before))
+    input("\n\n\nPress any key to quit")
 

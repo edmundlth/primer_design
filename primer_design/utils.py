@@ -87,6 +87,7 @@ def visualise(template,tiling,left,right,primer_length):
     Reverse primers are shown below the sequence at the right position
     The region of interest is in upper case, lower case otherwise
     """
+    
     template = template[:left].lower()+\
                template[left:right+1].upper()+\
                template[right+1:].lower()
@@ -104,9 +105,27 @@ def visualise(template,tiling,left,right,primer_length):
                  template[last_tile - primer_length: last_tile]
         template = template[:last_tile] + '|'+template[last_tile:]
     upper = upper[:-primer_length]
-    print(upper)
-    print(template)
-    print(lower)
+
+    chunk_size = 60
+    for i in range(0,len(template),chunk_size):
+        print('   ',upper[i: i+chunk_size],'   ')
+        print("5'>",template[i: i+chunk_size],">3'")
+        print('   ',lower[i: i + chunk_size],'   ')
+##
+##    splitted_uppers = []
+##    splitted_templates = []
+##    splitted_lowers = []
+##    for i in range(0,len(template), 60):
+##        splitted_uppers.append(upper[i: i+60])
+##        splitted_templates.append(template[i: i+60])
+##        splitted_lowers.append(lower[i: i+60])
+##
+##    for i in range(len(splitted_uppers)):
+##        print(splitted_uppers[i])
+##        print(splitted_templates[i])
+##        print(splitted_lowers[i])
+##        print('\n')
+        
 
 
 def get_primer_pair(template,tile, primer_length):
