@@ -1,7 +1,74 @@
 """
 
-Utilities functions that will be called by the primer_design program
+Utilities functions that will be called by the primer_design3.py program
+Author : Edmund Lau (elau1@student.unimelb.edu.au)
+------------------------------------------------------------------------
+Description:
+Provide the utilies need by the primer design algorithm.
+The primary utility is the scoring function score() which itself calls
+other functions which score a particular criteria:
+Example (not exhausive since the file is being modified):
+- entropy score
+- repeats
+- dimer and self-dimer
+- hairpin
+- gc content
+------------------------------------------------------------------------
 
+
+
+Coventions:
+1) Using 0-based indexing
+2) A region is specified by its STARTING POSITION and its LENGTH
+   -- a_region = (start, length)
+   -- this convention is applied to all tiles or template, ie.
+      any contiguous sequence on the background DNA
+   -- similarly, any particular tiling scheme is denoted by
+      [ staring position (0-based index) , list of tile sizes ]
+      e.g. [10, 100,108,105,101,100] is a tiling that starts at
+           position 10 and has 5 tiles.
+    
+
+
+Definitions: (using Haskell notation for type)
+
+template :: String
+-- The string of DNA that the region of interest is embedded in.
+
+region :: String
+-- a contigous substring of the background_DNA
+
+
+coord :: (Int,Int)
+-- specification of where the template is in the background DNA
+   It obey all convention
+   eg. (50,1000) is a template
+        starting at the 51st character to the 1050th inclusive.
+template_coord :: (Int,Int)
+-- see coord
+tile_coord :: (Int,Int)
+-- see coord
+primer_coord :: (Int,Int)
+-- see coord
+
+tile_sizes :: [Int]
+-- The list of different tile sizes to choose from. The tile size should be
+   within the tolerance of HiPlex size selection.
+
+
+primer_combination :: high level definition only
+-- The set of primers (or the set of primer pairs) that will ultimately be
+   added to the multiplex PCR reaction vessel.
+
+PRIMER_LENGTH :: Int
+-- the length of all primer. currently a fixed constant.
+
+    
+primer_pair :: (String,String)
+-- The tuple of (forward primer, reverse primer)
+   at present stage, each primer is simply a substring of
+   the original sequence where forward primer has 3' end right before the
+   left cut of the tile and extend towards the 5' end as far as primer_length.
 """
 
 import math
@@ -11,6 +78,15 @@ import random
 
 
 def visualise(template,tiling,left,right,primer_length):
+    """
+    This function generate a visual of the position of the primers base
+    on the tiling scheme inputed.
+    Primer pair of a tile is simply the sequences of length = primer_length
+    which flank the tile.
+    Forward primers are shown above the sequence at the right position
+    Reverse primers are shown below the sequence at the right position
+    The region of interest is in upper case, lower case otherwise
+    """
     template = template[:left].lower()+\
                template[left:right+1].upper()+\
                template[right+1:].lower()
@@ -34,6 +110,16 @@ def visualise(template,tiling,left,right,primer_length):
 
 
 def get_primer_pair(template,tile, primer_length):
+    """
+    template : a string of DNA
+    tile : a 2-tuple (start_pos, length) specifying the tile of interest
+           on the template.
+    primer_length : integer
+    
+    Return a 2-tuple of string (f_primer, r_primer)
+    This function simple return the sequences flanking the tile with
+    length = primer_length
+    """
     f_coord = tile[0]
     r_coord = tile[1]+1
     f_primer = template[f_coord- primer_length : f_coord]
@@ -46,6 +132,14 @@ def get_primer_pair(template,tile, primer_length):
 
 ######################## Scoring #######################################
 def score(template,tile,primer_length):
+    """
+    The scoring function which return the primer score of the tile.
+    
+    NOTE that it is on a function of template, tile and primer_length only.
+    Those are "local" variable which is independent of the choice of other
+    primer pairs in the ultimate combination. (a primer pair amplifying
+    a tile is taken into consideration however).
+    """
     pair = get_primer_pair(template,tile,primer_length)
     f_primer = pair[0]
     r_primer = pair[1]
@@ -62,6 +156,7 @@ def score(template,tile,primer_length):
 
 
 def entropy_score(primer):
+    """ H = sum( -pi * log pi) for all i) """
     return sum(
         -p*math.log(p) for p in
         [primer.count(i)/float(len(primer)) for i in set(primer.upper())])
