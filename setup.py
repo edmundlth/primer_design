@@ -12,5 +12,7 @@ setup(
         'console_scripts': ['primer_design = primer_design.primer_desig3:main']
     },
     url='https://github.com/edmundlth/primer_design',
-    install_requires=[],
+    licence = "LICENCE.txt",
+    description = ('README'),
+    long_description = ('README'),
 )
