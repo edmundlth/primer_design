@@ -4,9 +4,17 @@ from distutils.core import setup
 
 setup(
     name='primer_design',
-    version='0.1.0',
+    version='0.0.1',
     author='Edmund Lau',
-    author_email='elau1@student.unimelb.edu.au',
+    author_email='elau1@students.unimelb.edu.au',
     packages=['primer_design'],
+    entry_points={
+        'console_scripts': ['primer_design = primer_design.primer_design:main']
+    },
     url='https://github.com/edmundlth/primer_design',
+    license='LICENSE.txt',
+    description=('FIXME'),
+    long_description=('FIXME'),
+    install_requires=[
+    ],
 )
