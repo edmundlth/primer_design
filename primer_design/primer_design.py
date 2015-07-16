@@ -173,20 +173,7 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     return result
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-if __name__ == "__main__":
+def main():
     print("With PRIMER_LENGTH = %i and region size ~ 1000\n"
           "This will take ~15 seconds\n\n"%PRIMER_LENGTH)
     bases = ['A','T','G','C']
@@ -224,4 +211,8 @@ if __name__ == "__main__":
     print("MEMO length = number of new CALLS = %i" %len(MEMO))
     print("Time_taken = %f" %(after - before))
     input("\n\n\nPress any key to quit")
+
+
+if __name__ == "__main__":
+    main()
 
