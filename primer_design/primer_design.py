@@ -62,6 +62,8 @@ PRIMER_LENGTH :: Int
 from utils import score, visualise
 from time import time
 from random import randint
+from argparse import ArgumentParser
+import logging
 
 import sys
 sys.setrecursionlimit(10000)
@@ -172,8 +174,36 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     MEMO[ (suffix_pos, length) ] = result
     return result
 
+DEFAULT_LOG_FILE = "primer_design.log"
+
+def parse_args():
+    'Parse the command line arguments for the program.'
+    parser = ArgumentParser(
+        description="Design primers for Hi-Plex")
+    #parser.add_argument(
+    #    '--version', action='version', version='%(prog)s ' + VERSION)
+    parser.add_argument(
+        '--log', metavar='FILE', type=str, default=DEFAULT_LOG_FILE, 
+        help='Log progress in FILENAME. Defaults to {}'.format(DEFAULT_LOG_FILE))
+    return parser.parse_args()
+
+
+def start_log(log):
+    '''Initiate program logging. If no log file is specified then
+    log output goes to DEFAULT_LOGFILE.'''
+    logging.basicConfig(
+        filename=log,
+        level=logging.DEBUG,
+        filemode='w',
+        format='%(asctime)s %(message)s',
+        datefmt='%m/%d/%Y %H:%M:%S')
+    logging.info('program started')
+    # Log the command line that was used to run the program
+    logging.info('command line: {0}'.format(' '.join(sys.argv)))
 
 def main():
+    args = parse_args()
+    start_log(args.log)
     print("With PRIMER_LENGTH = %i and region size ~ 1000\n"
           "This will take ~15 seconds\n\n"%PRIMER_LENGTH)
     bases = ['A','T','G','C']

@@ -111,20 +111,7 @@ def visualise(template,tiling,left,right,primer_length):
         print('   ',upper[i: i+chunk_size],'   ')
         print("5'>",template[i: i+chunk_size],">3'")
         print('   ',lower[i: i+chunk_size],'   ')
-##
-##    splitted_uppers = []
-##    splitted_templates = []
-##    splitted_lowers = []
-##    for i in range(0,len(template), 60):
-##        splitted_uppers.append(upper[i: i+60])
-##        splitted_templates.append(template[i: i+60])
-##        splitted_lowers.append(lower[i: i+60])
-##
-##    for i in range(len(splitted_uppers)):
-##        print(splitted_uppers[i])
-##        print(splitted_templates[i])
-##        print(splitted_lowers[i])
-##        print('\n')
+
         
 
 
@@ -146,7 +133,10 @@ def get_primer_pair(template,tile, primer_length):
     return (f_primer, r_primer)
 
 
-
+def rev_complement(seq):
+    seq = seq.upper()
+    complement = {'A':'T','G':'C','C':'G','T':'A'}
+    return ''.join(complement[base] for base in seq)[::-1]
 
 
 ######################## Scoring #######################################
