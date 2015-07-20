@@ -147,7 +147,7 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     # Memoization
     if suffix_pos in MEMO:
         MEMO_CALLS +=1
-        return MEMo[suffix_pos]
+        return MEMO[suffix_pos]
 
     # initialisation : best_score intialise to -inf since allow -ve score
     best_tiling = [suffix_pos]
@@ -171,7 +171,7 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     result = (best_tiling, best_score)
     
     # memoize the result
-    MEMO[ (suffix_pos, length) ] = result
+    MEMO[ suffix_pos ] = result
     return result
 
 DEFAULT_LOG_FILE = "primer_design.log"
