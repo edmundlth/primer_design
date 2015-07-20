@@ -145,9 +145,9 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
         return ([],0)
     
     # Memoization
-    if (suffix_pos, length) in MEMO:
+    if suffix_pos in MEMO:
         MEMO_CALLS +=1
-        return MEMO[(suffix_pos,length)]
+        return MEMo[suffix_pos]
 
     # initialisation : best_score intialise to -inf since allow -ve score
     best_tiling = [suffix_pos]
