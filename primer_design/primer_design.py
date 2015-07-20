@@ -217,7 +217,7 @@ def main():
 ##    tile_sizes2 = [3,4,5]
     
     tile_sizes3 = [100,101,102,103,104,105,106,107,108,109,110]
-    template_length3 = 3000
+    template_length3 = 1000
     template3 = ''
     for b in [bases[randint(0,3)] for i in range(template_length3)]:
         template3 +=b
