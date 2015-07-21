@@ -15,7 +15,6 @@ Example (not exhausive since the file is being modified):
 ------------------------------------------------------------------------
 
 
-
 Coventions:
 1) Using 0-based indexing
 2) A region is specified by its STARTING POSITION and its LENGTH
@@ -70,14 +69,18 @@ primer_pair :: (String,String)
    left cut of the tile and extend towards the 5' end as far as primer_length.
 
 """
-
+from Bio.SeqUtils.MeltingTemp import Tm_NN, Tm_Wallace, Tm_GC
 import math
 import itertools
 import random
 
 
 
-def visualise(template,tiling,left,right,primer_length):
+
+
+
+
+def visualise(template,tiling,left,right,primer_lengths):
     """
     This function generate a visual of the position of the primers base
     on the tiling scheme inputed.
@@ -91,20 +94,23 @@ def visualise(template,tiling,left,right,primer_length):
     template = template[:left].lower()+\
                template[left:right+1].upper()+\
                template[right+1:].lower()
-    upper = ' '* (tiling[0] - primer_length) +\
-            template[tiling[0]- primer_length : tiling[0]]
-    lower = ' ' * (tiling[0]+ primer_length + 1)
+    upper = ' '* (tiling[0] - primer_lengths[0][0]) +\
+            template[tiling[0]- primer_lengths[0][0] : tiling[0]]
+    lower = ' ' * (tiling[0]+ primer_lengths[0][1] + 1)
     template = template[:tiling[0]] + '|' + template[tiling[0]:]
     
     last_tile = tiling[0]
-    for inc in tiling[1:]:
+    for i in range(1,len(primer_lengths)):
+        inc = tiling[i]
+        f_primer_length = primer_lengths[i][0]
+        r_primer_length = primer_lengths[i][1]
         last_tile += inc +1
-        lower += ' '* (inc - primer_length+1) + \
-                 template[last_tile: last_tile+primer_length]
-        upper += ' '* (inc -primer_length +1) + \
-                 template[last_tile - primer_length: last_tile]
+        lower += ' '* (inc - r_primer_length+1) + \
+                 template[last_tile: last_tile+r_primer_length]
+        upper += ' '* (inc -f_primer_length +1) + \
+                 template[last_tile - f_primer_length: last_tile]
         template = template[:last_tile] + '|'+template[last_tile:]
-    upper = upper[:-primer_length]
+    upper = upper[:-f_primer_length]
 
     chunk_size = 60
     for i in range(0,len(template),chunk_size):
@@ -132,6 +138,16 @@ def get_primer_pair(template,tile, primer_length):
     r_primer = template[r_coord : r_coord + primer_length + 1]
     return (f_primer, r_primer)
 
+def get_primer(template, tile, primer_length, which_primer = 'f'):
+    which_primer = which_primer.lower()
+    if which_primer == 'f':
+        f_coord = tile[0]
+        return template[f_coord - primer_length : f_coord]
+    elif which_primer == 'r':
+        r_coord = tile[0] + tile[1]
+        return template[r_coord : r_coord + primer_length]
+    else:
+        raise ValueError('Input f or r to specify forward or reverse primer')
 
 def rev_complement(seq):
     seq = seq.upper()
@@ -140,7 +156,33 @@ def rev_complement(seq):
 
 
 ######################## Scoring #######################################
-def score(template,tile,primer_length):
+
+def score_tile(template, tile, f_len, r_len):
+    """ Return the score of the tile with the specified f and r
+primer length. The score of the tile is simply the sum of the score
+of the forward and reverse primer. Consider primer pair dimer only """
+    f_primer = get_primer(template, tile, f_len, which_primer = 'f')
+    r_primer = get_primer(template, tile, r_len, which_primer = 'r')
+    score =   score_primer(f_primer)\
+            + score_primer(r_primer)\
+            - dimer_score(f_primer, r_primer)
+    return score
+
+def score_primer(primer):
+    """Scoring primer's local property only. Cross dimer not considered
+This is a function primer sequence(string) -> Real number """
+    Tm = Tm_score(primer)
+    repeat = repeat_score(primer)
+    gc = gc_score(primer)
+    entropy = entropy_score(primer)
+    hairpin =  hairpin_score(primer)
+    self_dimer = 0#self_dimer_score(primer)
+    
+    score = Tm + gc + entropy - repeat - hairpin - entropy
+    return score
+    
+
+def score1(template,tile,primer_length):
     """
     The scoring function which return the primer score of the tile.
     
@@ -178,16 +220,13 @@ def gc_score(primer):
 
 def repeat_score(primer):
     return sum(len(list(group[1]))-1
-               for group in itertools.groupby(primer.upper()))
+               for group in itertools.groupby(primer.upper())) 
 
 
 def hairpin_score(primer):
-    return 0
-    #this function is not fully thought of yet!!
-    length = len(primer)
     num_match = 0
-    for i in range(1, math.ceil(length/2.0) +1):
-        top = primer[:i]
+    for i in range(1,len(primer)):
+        top = primer[:i][::-1]
         bottom = primer[i:]
         new_num_match = num_complement(top,bottom)
         if new_num_match > num_match:
@@ -209,11 +248,16 @@ def dimer_score(seq1,seq2):
 def self_dimer_score(primer):
     return dimer_score(primer,primer)
 
+def Tm_score(primer):
+    if primer:
+        return Tm_NN(primer)
+    else:
+        return 0
 
 
-############## Utils for scoring ########################3
+
+############## Utils for scoring #######################
 def num_complement(seq1,seq2):
-    assert len(seq1) == len(seq2)
     num_complement = 0
     for b1,b2 in zip(seq1,seq2):
         if is_complement(b1,b2):
@@ -228,3 +272,11 @@ def is_complement(base1,base2):
         return complement_dic[base1] == base2
     else:
         return False
+
+
+
+if __name__ == "__main__":
+   print(tile_score("ATGCTGAAGGCTAGAGGCTAGTAGCTAGATCAGGCTGGAGACTAGCTGCGGGGGCTAGAGGACTAGC", (23,10), 15,18))
+
+
+

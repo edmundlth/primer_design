@@ -15,6 +15,6 @@ setup(
     license='LICENSE.txt',
     description=('FIXME'),
     long_description=('FIXME'),
-    install_requires=[
+    install_requires=["Biopython"
     ],
 )

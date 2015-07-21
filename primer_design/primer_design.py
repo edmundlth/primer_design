@@ -59,7 +59,7 @@ PRIMER_LENGTH :: Int
 
 """
 
-from utils import score, visualise
+from utils import score_tile, visualise, dimer_score
 from time import time
 from random import randint
 from argparse import ArgumentParser
@@ -69,7 +69,8 @@ import sys
 sys.setrecursionlimit(10000)
 
 # Currently primer length is fixed. 
-PRIMER_LENGTH = 20
+#PRIMER_LENGTH = 20
+#LENGTH_VAR = 2
 
 # GLOBAL VARIABLES
 # MEMO is used in dynamic programming's memoization
@@ -101,6 +102,7 @@ def design(template, tile_sizes, pos, length):
     # best_score is initialise to -inf since current scoring allows -ve score
     best_combination = []
     best_score = -10000000
+    best_lengths = []
     # loop through each possible tile sizes and
     # all its possible overlap configuration
     # then choose the best corresponding "suffix" - the rest of the the seq
@@ -113,7 +115,9 @@ def design(template, tile_sizes, pos, length):
             suffix_length = length - overlap
             
             first_tile = (prefix_pos, size)
-            first_tile_score = score(template, first_tile, PRIMER_LENGTH)
+            first_tile_primers = tile_primer_lens(template, first_tile, PRIMER_LENGTH,LENGTH_VAR) 
+            first_tile_score = first_tile_primers[0]
+            first_primer_lengths = [first_tile_primers[1]] 
 
             best_suffix_design = suffix_design(template,
                                                tile_sizes,
@@ -125,8 +129,9 @@ def design(template, tile_sizes, pos, length):
                 best_combination = [prefix_pos , size] +\
                                    best_suffix_design[0][1:]
                 best_score = new_score
+                best_lengths = first_primer_lengths + best_suffix_design[2] 
     print("Best score = %f" %best_score)
-    return best_combination
+    return best_combination,best_lengths
                                                
 
 def suffix_design(template, tile_sizes, suffix_pos, length):
@@ -141,8 +146,8 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     global CALLS, MEMO_CALLS
     CALLS +=1
     
-    if length <= 0: #non-positive length not tilable.
-        return ([],0)
+    #if length <= 0: #non-positive length not tilable.
+    #    return ([],0)
     
     # Memoization
     if suffix_pos in MEMO:
@@ -152,11 +157,18 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     # initialisation : best_score intialise to -inf since allow -ve score
     best_tiling = [suffix_pos]
     best_score = -10000
+    best_primer_lens = [(PRIMER_LENGTH,PRIMER_LENGTH)]
     for size in tile_sizes:
-        prefix_score = score(template, (suffix_pos, size), PRIMER_LENGTH)
+        prefix_primers = tile_primer_lens(template,
+                                          (suffix_pos, size),
+                                           PRIMER_LENGTH,
+                                           LENGTH_VAR)
+        prefix_score = prefix_primers[0]
+        prefix_primer_lengths = [prefix_primers[1]] 
         if size >= length: # base case
             new_tiling = [suffix_pos,size]
             new_score = prefix_score
+            new_primer_lengths = prefix_primer_lengths
         else:
             # recursion: solve same problem for the suffix of suffix
             rest = suffix_design(template,
@@ -165,14 +177,32 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
                                  length - size,)
             new_tiling = [suffix_pos,size] + rest[0][1:]
             new_score = prefix_score + rest[1]
+            new_primer_lengths = prefix_primer_lengths + rest[2]
+
         if new_score > best_score:
             best_tiling = new_tiling
             best_score = new_score
-    result = (best_tiling, best_score)
+            best_primer_lengths = new_primer_lengths
+    result = (best_tiling, best_score, best_primer_lengths)
     
     # memoize the result
-    MEMO[ suffix_pos ] = result
+    MEMO[suffix_pos] = result
     return result
+
+
+def tile_primer_lens(template, tile, primer_length, var):
+    best_score = -100000 
+    best_lengths = (primer_length, primer_length)
+    vary_range = range(-var, var +1)
+    for f_vary in vary_range:
+        for r_vary in vary_range:
+            f_len = primer_length + f_vary
+            r_len = primer_length + r_vary
+            new_score = score_tile(template, tile, f_len, r_len)  
+            if new_score > best_score:
+                best_score = new_score
+                best_lengths = (f_len, r_len) 
+    return (best_score, best_lengths) 
 
 DEFAULT_LOG_FILE = "primer_design.log"
 
@@ -185,6 +215,12 @@ def parse_args():
     parser.add_argument(
         '--log', metavar='FILE', type=str, default=DEFAULT_LOG_FILE, 
         help='Log progress in FILENAME. Defaults to {}'.format(DEFAULT_LOG_FILE))
+    parser.add_argument(
+        'primer_len', metavar = 'primer_len', type = int, 
+        help = 'an integer specifying optimal primer length', default = 20)
+    parser.add_argument(
+        'length_var', metavar = 'len_var', type = int,
+        help = 'an integer specifying primer length variance', default = 5) 
     return parser.parse_args()
 
 
@@ -203,9 +239,12 @@ def start_log(log):
 
 def main():
     args = parse_args()
+    global PRIMER_LENGTH
+    global LENGTH_VAR
+    PRIMER_LENGTH = args.primer_len
+    LENGTH_VAR = args.length_var
+    print(PRIMER_LENGTH)
     start_log(args.log)
-    print("With PRIMER_LENGTH = %i and region size ~ 1000\n"
-          "This will take ~15 seconds\n\n"%PRIMER_LENGTH)
     bases = ['A','T','G','C']
     
 ##    template1 = 'AAATGCACGAAAAATCGTGGCGTTTTATTTGTGCTAGTCGTGCGTGAAAATTCGTCCC'
@@ -227,12 +266,14 @@ def main():
     tile_sizes = tile_sizes3
     template_length = template_length3
     pos = max(tile_sizes) + PRIMER_LENGTH
-    
+    print("region size ~ %i\n"
+          %(template_length))
+
     before = time()
     tiling = design(template, tile_sizes, pos, template_length)
     after = time()
 
-    visualise(template,tiling, pos, pos + template_length, PRIMER_LENGTH )
+    visualise(template,tiling[0], pos, pos + template_length, tiling[1] )
     print("The corresponding tiling in the\n"
           "format [start_pos, tile sizes] is: \n\n",
           tiling, '\n')
