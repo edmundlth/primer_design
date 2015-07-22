@@ -59,7 +59,7 @@ PRIMER_LENGTH :: Int
 
 """
 
-from utils import score_tile, visualise, dimer_score
+from utils import score_tile, score_primer, get_primer,  visualise, dimer_score
 from time import time
 from random import randint
 from argparse import ArgumentParser
@@ -189,8 +189,36 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     MEMO[suffix_pos] = result
     return result
 
-
 def tile_primer_lens(template, tile, primer_length, var):
+    best_f_score = -100000
+    best_f_length = primer_length
+    best_r_score = -100000
+    best_r_length = primer_length
+    vary_range = range(-var, var + 1)
+    for vary in vary_range:
+        length = primer_length + vary
+        f_primer = get_primer(template, tile, length, which_primer = 'f')
+        r_primer = get_primer(template, tile, length, which_primer = 'r')
+        new_f_score = score_primer(f_primer)
+        new_r_score = score_primer(r_primer)
+
+        if new_f_score > best_f_score:
+            best_f_length = length
+            best_f_score = new_f_score
+        if new_r_score > best_r_score:
+            best_r_length = length
+            best_r_score = new_r_score
+    best_score = best_f_score + best_r_score
+    best_lengths = (best_f_length, best_r_length)
+    return (best_score, best_lengths)
+
+
+    for r_vary in vary_range:
+        r_len = primer_length + r_vary
+        r_priemr = get_primer 
+
+
+def tile_primer_lens1(template, tile, primer_length, var):
     best_score = -100000 
     best_lengths = (primer_length, primer_length)
     vary_range = range(-var, var +1)
@@ -281,7 +309,8 @@ def main():
     print("MEMO call = %i"%MEMO_CALLS)
     print("MEMO length = number of new CALLS = %i" %len(MEMO))
     print("Time_taken = %f" %(after - before))
-    input("\n\n\nPress any key to quit")
+    quiting = raw_input("\n\n\nPress return/enter to quit")
+    print("Thanks :) ")
 
 
 if __name__ == "__main__":
