@@ -60,9 +60,10 @@ PRIMER_LENGTH :: Int
 
 """
 
-from utils import (score_tile, score_primer,
-                   get_primer,  visualise,
+from score import (score_tile, score_primer,
+                   get_primer,
                    dimer_score)
+from utils import visualise
 from time import time
 from random import randint
 from argparse import ArgumentParser
@@ -83,7 +84,7 @@ MEMO = {}
 MEMO_CALLS = 0
 CALLS = 0
 
-def design(template, tile_sizes, pos, length):
+def design(template, tile_sizes, pos, length, primer_length, length_var):
     """
     This is the primary function of this program. It takes in a
     DNA template a specifed region of interest and tile it so that:
@@ -123,8 +124,8 @@ def design(template, tile_sizes, pos, length):
             first_tile = (prefix_pos, size)
             first_tile_primers = tile_primer_lens(template,
                                                   first_tile,
-                                                  PRIMER_LENGTH,
-                                                  LENGTH_VAR) 
+                                                  primer_length,
+                                                  length_var) 
             first_tile_score = first_tile_primers[0]
             first_primer_lengths = [first_tile_primers[1]] 
 
@@ -144,7 +145,7 @@ def design(template, tile_sizes, pos, length):
     return best_combination,best_lengths
                                                
 
-def suffix_design(template, tile_sizes, suffix_pos, length):
+def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_var):
     """
     Recursively tile the template starting from suffix_pos,
     with appropriate tile sizes so that the resultant primer combination
@@ -172,8 +173,8 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     for size in tile_sizes:
         prefix_primers = tile_primer_lens(template,
                                           (suffix_pos, size),
-                                           PRIMER_LENGTH,
-                                           LENGTH_VAR)
+                                           primer_length,
+                                           length_var)
         prefix_score = prefix_primers[0]
         prefix_primer_lengths = [prefix_primers[1]] 
         if size >= length: # base case
@@ -201,6 +202,16 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
     return result
 
 def tile_primer_lens(template, tile, primer_length, var):
+    '''This function returns the best scored 
+    (score, (forward primer length, reverse primer length))
+    of the specified tile (start pos, tile length), in the
+    template (string). The function loop through all
+    possible forward and reverse primer length 
+    (independently, hence not considering dimer) within 
+    the primer length variance specified in var to find
+    the best scored combination
+    The score is simply:
+        score_primer(f_primer) + score_primer(r_primer)'''
     best_f_score = -100000
     best_f_length = primer_length
     best_r_score = -100000
@@ -226,12 +237,15 @@ def tile_primer_lens(template, tile, primer_length, var):
     return (best_score, best_lengths)
 
 
-    for r_vary in vary_range:
-        r_len = primer_length + r_vary
-        r_priemr = get_primer 
 
 
 def tile_primer_lens1(template, tile, primer_length, var):
+    '''Depreciated! 
+    This the orginal function that returns the best scored
+    primer lengths choices of a particular tile considering
+    tile primer dimerisation. Because of that consideration, 
+    it has be check all v^2 number of primers, where
+    v = var = primer_length_variation.'''
     best_score = -100000 
     best_lengths = (primer_length, primer_length)
     vary_range = range(-var, var +1)
@@ -285,32 +299,21 @@ def start_log(log):
 
 def main():
     args = parse_args()
-    global PRIMER_LENGTH
-    global LENGTH_VAR
-    PRIMER_LENGTH = args.primer_len
-    LENGTH_VAR = args.length_var
-    print(PRIMER_LENGTH)
     start_log(args.log)
+    bed_file = open(args.bed)
+    fasta_file = open(args.fa)
+
+
     bases = ['A','T','G','C']
     
-##    template1 = 'AAATGCACGAAAAATCGTGGCGTTTTATTTGTGCTAGTCGTGCGTGAAAATTCGTCCC'
-##    template_length1 = len(template1) - 11
-##    tile_sizes1 = [8,9,10]
-##    
-##    template2 = "AATGCGTCAGTTGAC"
-##    template_length2 = len(template2) -6
-##    tile_sizes2 = [3,4,5]
     
-    tile_sizes3 = [100,101,102,103,104,105,106,107,108,109,110]
-    template_length3 = 1000
-    template3 = ''
+    tile_sizes = [100,101,102,103,104,105,106,107,108,109,110]
+    template_length = 1000
+    template = ''
     for b in [bases[randint(0,3)] for i in range(template_length3)]:
         template3 +=b
-    template_length3 -= max(tile_sizes3)
+    template_length -= max(tile_sizes)
 
-    template = template3
-    tile_sizes = tile_sizes3
-    template_length = template_length3
     pos = max(tile_sizes) + PRIMER_LENGTH
     print("region size ~ %i\n"
           %(template_length))
