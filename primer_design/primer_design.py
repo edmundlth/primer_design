@@ -4,9 +4,9 @@ Author: Edmund Lau (elau1@student.unimelb.edu.au)
 ----------------------------------------------------------------
 Description:
 At the moment, the program takes in a template DNA, and the coordinates
-specifiying the region of interest in the template which is to be amplified,
-and try to find the best tiling which produce the best scored primer
-combination to perform multiplex PCR.
+specifiying the region of interest in the template which is to be
+amplified, and try to find the best tiling which produce the
+best scored primer combination to perform multiplex PCR.
 **All terms and conventions are defined below.
 ----------------------------------------------------------------
 
@@ -46,20 +46,23 @@ primer_coord :: (Int,Int)
 -- see coord
 
 tile_sizes :: [Int]
--- The list of different tile sizes to choose from. The tile size should be
-   within the tolerance of HiPlex size selection.
+-- The list of different tile sizes to choose from.
+   The tile size should be  within the tolerance of
+   HiPlex size selection.
 
 
 primer_combination :: high level definition only
--- The set of primers (or the set of primer pairs) that will ultimately be
-   added to the multiplex PCR reaction vessel.
+-- The set of primers (or the set of primer pairs) that will
+   ultimately be added to the multiplex PCR reaction vessel.
 
 PRIMER_LENGTH :: Int
 -- the length of all primer. currently a fixed constant.
 
 """
 
-from utils import score_tile, score_primer, get_primer,  visualise, dimer_score
+from utils import (score_tile, score_primer,
+                   get_primer,  visualise,
+                   dimer_score)
 from time import time
 from random import randint
 from argparse import ArgumentParser
@@ -68,7 +71,6 @@ import logging
 import sys
 sys.setrecursionlimit(10000)
 
-# Currently primer length is fixed. 
 #PRIMER_LENGTH = 20
 #LENGTH_VAR = 2
 
@@ -86,26 +88,30 @@ def design(template, tile_sizes, pos, length):
     This is the primary function of this program. It takes in a
     DNA template a specifed region of interest and tile it so that:
     1) Each tiles have sizes as specified in tile_sizes
-    2) A tile has to overlap the region of interest by at least one base.
+    2) A tile has to overlap the region of interest by at
+       least one base.
        **implying left and right boundary of the leftmost and rightmost
          tiles may exceed the region of interest.
-    3) The resultant primer combination that will amplify the whole region
-       has maximal score.
+    3) The resultant primer combination that will amplify the whole
+       region has maximal score.
 
-    template : the string of DNA where the region of interest is embedded
+    template : the string of DNA where the region of interest
+               is embedded
     tile_sizes : a list of integer specify legal tile size
-    pos : a integer specify the 0-based index of the starting position of
-          the region of interest
+    pos : a integer specify the 0-based index of the
+          starting position of the region of interest
     length : an integer specify the length of the region of interest.
     """
     # Initialisation
-    # best_score is initialise to -inf since current scoring allows -ve score
+    # best_score is initialise to -inf since
+    # current scoring allows -ve score
     best_combination = []
     best_score = -10000000
     best_lengths = []
     # loop through each possible tile sizes and
     # all its possible overlap configuration
-    # then choose the best corresponding "suffix" - the rest of the the seq
+    # then choose the best corresponding "suffix"
+    # - the rest of the the seq
     # return the combination where
     # score = first_tile_score + best_suffix_score      is a maximum.
     for size in tile_sizes:
@@ -115,7 +121,10 @@ def design(template, tile_sizes, pos, length):
             suffix_length = length - overlap
             
             first_tile = (prefix_pos, size)
-            first_tile_primers = tile_primer_lens(template, first_tile, PRIMER_LENGTH,LENGTH_VAR) 
+            first_tile_primers = tile_primer_lens(template,
+                                                  first_tile,
+                                                  PRIMER_LENGTH,
+                                                  LENGTH_VAR) 
             first_tile_score = first_tile_primers[0]
             first_primer_lengths = [first_tile_primers[1]] 
 
@@ -129,7 +138,8 @@ def design(template, tile_sizes, pos, length):
                 best_combination = [prefix_pos , size] +\
                                    best_suffix_design[0][1:]
                 best_score = new_score
-                best_lengths = first_primer_lengths + best_suffix_design[2] 
+                best_lengths = first_primer_lengths\
+                        + best_suffix_design[2] 
     print("Best score = %f" %best_score)
     return best_combination,best_lengths
                                                
@@ -154,7 +164,8 @@ def suffix_design(template, tile_sizes, suffix_pos, length):
         MEMO_CALLS +=1
         return MEMO[suffix_pos]
 
-    # initialisation : best_score intialise to -inf since allow -ve score
+    # initialisation : best_score intialise to -inf
+    # since allow -ve score
     best_tiling = [suffix_pos]
     best_score = -10000
     best_primer_lens = [(PRIMER_LENGTH,PRIMER_LENGTH)]
@@ -197,8 +208,10 @@ def tile_primer_lens(template, tile, primer_length, var):
     vary_range = range(-var, var + 1)
     for vary in vary_range:
         length = primer_length + vary
-        f_primer = get_primer(template, tile, length, which_primer = 'f')
-        r_primer = get_primer(template, tile, length, which_primer = 'r')
+        f_primer = get_primer(template, tile,
+                              length, which_primer = 'f')
+        r_primer = get_primer(template, tile,
+                              length, which_primer = 'r')
         new_f_score = score_primer(f_primer)
         new_r_score = score_primer(r_primer)
 
@@ -244,11 +257,16 @@ def parse_args():
         '--log', metavar='FILE', type=str, default=DEFAULT_LOG_FILE, 
         help='Log progress in FILENAME. Defaults to {}'.format(DEFAULT_LOG_FILE))
     parser.add_argument(
-        'primer_len', metavar = 'primer_len', type = int, 
-        help = 'an integer specifying optimal primer length', default = 20)
+        '--primer-len', metavar = 'primer_len', type = int, default = 20,
+        help = 'an integer specifying optimal primer length')
     parser.add_argument(
-        'length_var', metavar = 'len_var', type = int,
-        help = 'an integer specifying primer length variance', default = 5) 
+        '--length_var', metavar = 'len_var', type = int, default = 5,
+        help = 'an integer specifying primer length variance')
+    parser.add_argument(
+        "--tile_sizes", metavar = "tile_sizes", type = int,
+        help = 'a list of integers specifying the list of tile sizes desired')
+    parser.add_argument(
+        '--tiles', metavar = 'tiles', type = int, nargs=2, 
     return parser.parse_args()
 
 
