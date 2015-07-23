@@ -10,14 +10,27 @@ Provide the utilitis which enable
 
 
 """
-from Bio.SeqUtils.MeltingTemp import Tm_NN, Tm_Wallace, Tm_GC
-import math
-import itertools
-import random
 
 
+from score import rev_complement
 
-
+def visualise_tile(template, tile, f_r_lens):
+    template = str(template)
+    start = tile[0]
+    end = tile[0] + tile[1]
+    f_len, r_len = f_r_lens
+    relevant_template = template[start - f_len:end + r_len]
+    f_primer = relevant_template[:f_len]
+    f_bond = '|' * f_len
+    r_primer = ' ' * (end - start + f_len)\
+                 + relevant_template[- r_len:]
+    r_bond = ' ' * (end - start + f_len) + '|' * r_len
+    print(f_primer)
+    print(f_bond)
+    print(relevant_template)
+    print(r_bond)
+    print(r_primer)
+    return (f_primer, f_bond, relevant_template, r_bond, r_primer)
 
 
 
@@ -59,6 +72,15 @@ def visualise(template,tiling,left,right,primer_lengths):
         print("5'>",template[i: i+chunk_size],">3'")
         print('   ',lower[i: i+chunk_size],'   ')
 
-        
 
+def bed_coords(file_name):
+    bed_file = open(file_name)
+    start_len_coords = []
+    for line in bed_file:
+        coords = line.split('\t')[:3]
+        start = int(coords[1])
+        length = int(coords[2]) - start
+        start_len_coords.append((coords[0],start,length))
+    bed_file.close()
+    return start_len_coords
 

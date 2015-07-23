@@ -60,10 +60,11 @@ PRIMER_LENGTH :: Int
 
 """
 
+from Bio import SeqIO
 from score import (score_tile, score_primer,
                    get_primer,
                    dimer_score)
-from utils import visualise
+from utils import visualise, visualise_tile, bed_coords
 from time import time
 from random import randint
 from argparse import ArgumentParser
@@ -132,7 +133,9 @@ def design(template, tile_sizes, pos, length, primer_length, length_var):
             best_suffix_design = suffix_design(template,
                                                tile_sizes,
                                                suffix_pos,
-                                               suffix_length)
+                                               suffix_length,
+                                               primer_length,
+                                               length_var)
             
             new_score = first_tile_score + best_suffix_design[1]
             if new_score > best_score:
@@ -142,7 +145,7 @@ def design(template, tile_sizes, pos, length, primer_length, length_var):
                 best_lengths = first_primer_lengths\
                         + best_suffix_design[2] 
     print("Best score = %f" %best_score)
-    return best_combination,best_lengths
+    return best_combination,best_lengths, best_score
                                                
 
 def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_var):
@@ -169,7 +172,7 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
     # since allow -ve score
     best_tiling = [suffix_pos]
     best_score = -10000
-    best_primer_lens = [(PRIMER_LENGTH,PRIMER_LENGTH)]
+    best_primer_lens = [(primer_length,primer_length)]
     for size in tile_sizes:
         prefix_primers = tile_primer_lens(template,
                                           (suffix_pos, size),
@@ -186,7 +189,9 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
             rest = suffix_design(template,
                                  tile_sizes,
                                  suffix_pos + size,
-                                 length - size,)
+                                 length - size,
+                                 primer_length,
+                                 length_var)
             new_tiling = [suffix_pos,size] + rest[0][1:]
             new_score = prefix_score + rest[1]
             new_primer_lengths = prefix_primer_lengths + rest[2]
@@ -212,10 +217,8 @@ def tile_primer_lens(template, tile, primer_length, var):
     the best scored combination
     The score is simply:
         score_primer(f_primer) + score_primer(r_primer)'''
-    best_f_score = -100000
-    best_f_length = primer_length
-    best_r_score = -100000
-    best_r_length = primer_length
+    best_f_score, best_r_score = -100000, -100000
+    best_f_length, best_r_length = primer_length, primer_length
     vary_range = range(-var, var + 1)
     for vary in vary_range:
         length = primer_length + vary
@@ -263,26 +266,26 @@ DEFAULT_LOG_FILE = "primer_design.log"
 
 def parse_args():
     'Parse the command line arguments for the program.'
-    parser = ArgumentParser(
-        description="Design primers for Hi-Plex")
-    #parser.add_argument(
-    #    '--version', action='version', version='%(prog)s ' + VERSION)
-    parser.add_argument(
-        '--log', metavar='FILE', type=str, default=DEFAULT_LOG_FILE, 
-        help='Log progress in FILENAME. Defaults to {}'.format(DEFAULT_LOG_FILE))
-    parser.add_argument(
-        '--primer-len', metavar = 'primer_len', type = int, default = 20,
-        help = 'an integer specifying optimal primer length')
-    parser.add_argument(
-        '--length_var', metavar = 'len_var', type = int, default = 5,
-        help = 'an integer specifying primer length variance')
-    parser.add_argument(
-        "--tile_sizes", metavar = "tile_sizes", type = int,
-        help = 'a list of integers specifying the list of tile sizes desired')
-    parser.add_argument(
-        '--tiles', metavar = 'tiles', type = int, nargs=2, 
+    parser = ArgumentParser(description = 'Hiplex primer design tools')
+    parser.add_argument('--log', metavar = "LOG_FILE", type = str,
+                    default = DEFAULT_LOG_FILE, help = 'Log file. Default to %s'%DEFAULT_LOG_FILE)
+    parser.add_argument('--primer_len', metavar = 'p', type = int,
+                    default = 20, help = 'An integer specifying the optimal primer length, default to 20')
+    parser.add_argument('--outfile', type = str, default = 'primer_out.txt', 
+                    help = 'Specify the file name where the records of the program output will be written')
+    parser.add_argument('--len_var', type = int, default = 5,
+                    help = 'An integer specifying the optimal primer length, default to 5')
+    parser.add_argument('--tiles', type = int, required = True, nargs = 2,
+                    help = '''A pair of integers that specify the minimum tile size and 
+                    the range of tile sizes. eg --tiles 100 5 means the tile sizes are
+                    100, 101, 102, 103, 104, 105''')
+    parser.add_argument('--tm', metavar = 'tm', type = float, default = 60.0, 
+                    help = '''A floating point number specifying the optimal melting temperature,default to 60.0 degC''')
+    parser.add_argument('--fa', type = str, nargs='*', 
+                    help = '''The fasta file containing the DNA sequence where the regions of interest are embeded in''')
+    parser.add_argument('--bed', type = str,
+                    help = '''The BED file where the coordinates of the regions of interest are written in''')
     return parser.parse_args()
-
 
 def start_log(log):
     '''Initiate program logging. If no log file is specified then
@@ -300,10 +303,45 @@ def start_log(log):
 def main():
     args = parse_args()
     start_log(args.log)
-    bed_file = open(args.bed)
-    fasta_file = open(args.fa)
+    coords = bed_coords(args.bed)
+    sequences = {}
+    print(args.fa)
+    for fasta in args.fa:
+        print(fasta)
+        seq_records = SeqIO.parse(fasta,'fasta')
+        for record in seq_records:
+            sequences[record.id] = record.seq
+    outfile = open(args.outfile,'w')
+    primer_len = args.primer_len
+    len_var = args.len_var
+    tile_sizes = [args.tiles[0] + i for i in range(args.tiles[1] +1) ]
+    for chromo, start_pos, length in coords:
+        template = sequences[chromo]
+        tile_lengths, primer_lengths,score = design(template,
+                                                    tile_sizes,
+                                                    start_pos,
+                                                    length,
+                                                    primer_len,
+                                                    len_var)
+        pos = tile_lengths[0]
+        for i in range(len(primer_lengths)):
+            f_r_len = primer_lengths[i]
+            length = tile_lengths[i+1]
+            tile = (pos, length)
+            output = visualise_tile(template, tile, f_r_len)
+
+            outfile.write('Chromosome=%s start=%i end=%i\n'
+                    %(chromo,start_pos,start_pos +length -1))
+            for line in output:
+                outfile.write(line+'\n')
+            outfile.write('\n\n')
 
 
+
+
+
+
+    print("HEEEEEEEEEEYYYYYYYYYYYY!!!!!!! FILE IS DONE!!!!!")
     bases = ['A','T','G','C']
     
     
