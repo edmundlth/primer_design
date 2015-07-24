@@ -25,11 +25,11 @@ def visualise_tile(template, tile, f_r_lens):
     r_primer = ' ' * (end - start + f_len)\
                  + relevant_template[- r_len:]
     r_bond = ' ' * (end - start + f_len) + '|' * r_len
-    print(f_primer)
-    print(f_bond)
-    print(relevant_template)
-    print(r_bond)
-    print(r_primer)
+    #print(f_primer)
+    #print(f_bond)
+    #print(relevant_template)
+    #print(r_bond)
+    #print(r_primer)
     return (f_primer, f_bond, relevant_template, r_bond, r_primer)
 
 

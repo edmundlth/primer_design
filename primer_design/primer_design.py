@@ -62,8 +62,8 @@ PRIMER_LENGTH :: Int
 
 from Bio import SeqIO
 from score import (score_tile, score_primer,
-                   get_primer,
-                   dimer_score)
+                   get_primer, dimer_score,
+                   rev_complement)
 from utils import visualise, visualise_tile, bed_coords
 from time import time
 from random import randint
@@ -73,19 +73,12 @@ import logging
 import sys
 sys.setrecursionlimit(10000)
 
-#PRIMER_LENGTH = 20
-#LENGTH_VAR = 2
 
 # GLOBAL VARIABLES
 # MEMO is used in dynamic programming's memoization
-# MEMO_CALLS and CALLS keep track of the times memo is looked up and
-# the number of recursive calls.
-# This should implies : len(MEMO) + MEMO_CALLS = CALLS
 MEMO = {}
-MEMO_CALLS = 0
-CALLS = 0
 
-def design(template, tile_sizes, pos, length, primer_length, length_var):
+def design(template, tile_sizes, pos, length, primer_length, length_var,target_tm):
     """
     This is the primary function of this program. It takes in a
     DNA template a specifed region of interest and tile it so that:
@@ -126,7 +119,8 @@ def design(template, tile_sizes, pos, length, primer_length, length_var):
             first_tile_primers = tile_primer_lens(template,
                                                   first_tile,
                                                   primer_length,
-                                                  length_var) 
+                                                  length_var,
+                                                  target_tm) 
             first_tile_score = first_tile_primers[0]
             first_primer_lengths = [first_tile_primers[1]] 
 
@@ -135,7 +129,8 @@ def design(template, tile_sizes, pos, length, primer_length, length_var):
                                                suffix_pos,
                                                suffix_length,
                                                primer_length,
-                                               length_var)
+                                               length_var,
+                                               target_tm)
             
             new_score = first_tile_score + best_suffix_design[1]
             if new_score > best_score:
@@ -144,11 +139,11 @@ def design(template, tile_sizes, pos, length, primer_length, length_var):
                 best_score = new_score
                 best_lengths = first_primer_lengths\
                         + best_suffix_design[2] 
-    print("Best score = %f" %best_score)
+    # print("Best score = %f" %best_score)
     return best_combination,best_lengths, best_score
                                                
 
-def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_var):
+def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_var,target_tm):
     """
     Recursively tile the template starting from suffix_pos,
     with appropriate tile sizes so that the resultant primer combination
@@ -157,15 +152,12 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
     in the variable length, len(tile_sizes)
     """
     # keeping track of how many calls are made to this function
-    global CALLS, MEMO_CALLS
-    CALLS +=1
     
     #if length <= 0: #non-positive length not tilable.
     #    return ([],0)
     
     # Memoization
     if suffix_pos in MEMO:
-        MEMO_CALLS +=1
         return MEMO[suffix_pos]
 
     # initialisation : best_score intialise to -inf
@@ -177,7 +169,8 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
         prefix_primers = tile_primer_lens(template,
                                           (suffix_pos, size),
                                            primer_length,
-                                           length_var)
+                                           length_var,
+                                           target_tm)
         prefix_score = prefix_primers[0]
         prefix_primer_lengths = [prefix_primers[1]] 
         if size >= length: # base case
@@ -191,7 +184,8 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
                                  suffix_pos + size,
                                  length - size,
                                  primer_length,
-                                 length_var)
+                                 length_var,
+                                 target_tm)
             new_tiling = [suffix_pos,size] + rest[0][1:]
             new_score = prefix_score + rest[1]
             new_primer_lengths = prefix_primer_lengths + rest[2]
@@ -206,7 +200,7 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
     MEMO[suffix_pos] = result
     return result
 
-def tile_primer_lens(template, tile, primer_length, var):
+def tile_primer_lens(template, tile, primer_length, var,target_tm):
     '''This function returns the best scored 
     (score, (forward primer length, reverse primer length))
     of the specified tile (start pos, tile length), in the
@@ -226,8 +220,8 @@ def tile_primer_lens(template, tile, primer_length, var):
                               length, which_primer = 'f')
         r_primer = get_primer(template, tile,
                               length, which_primer = 'r')
-        new_f_score = score_primer(f_primer)
-        new_r_score = score_primer(r_primer)
+        new_f_score = score_primer(f_primer,target_tm, which_primer = 'f')
+        new_r_score = score_primer(r_primer,target_tm, which_primer = 'r')
 
         if new_f_score > best_f_score:
             best_f_length = length
@@ -301,28 +295,29 @@ def start_log(log):
     logging.info('command line: {0}'.format(' '.join(sys.argv)))
 
 def main():
+    before_time = time()
     args = parse_args()
     start_log(args.log)
     coords = bed_coords(args.bed)
-    sequences = {}
-    print(args.fa)
-    for fasta in args.fa:
-        print(fasta)
-        seq_records = SeqIO.parse(fasta,'fasta')
-        for record in seq_records:
-            sequences[record.id] = record.seq
+    target_tm = args.tm
     outfile = open(args.outfile,'w')
     primer_len = args.primer_len
     len_var = args.len_var
     tile_sizes = [args.tiles[0] + i for i in range(args.tiles[1] +1) ]
+    sequences = {}
     for chromo, start_pos, length in coords:
+        MEMO = {} # memo for dynamic programing. Refresh so that it's empty for every exon
+        if chromo not in sequences:
+            #currently we only have one sequence per fasta file
+            sequences[chromo] = next(SeqIO.parse('fasta/%s.fa'%chromo, 'fasta')).seq
         template = sequences[chromo]
         tile_lengths, primer_lengths,score = design(template,
                                                     tile_sizes,
                                                     start_pos,
                                                     length,
                                                     primer_len,
-                                                    len_var)
+                                                    len_var,
+                                                    target_tm)
         pos = tile_lengths[0]
         for i in range(len(primer_lengths)):
             f_r_len = primer_lengths[i]
@@ -330,46 +325,19 @@ def main():
             tile = (pos, length)
             output = visualise_tile(template, tile, f_r_len)
 
-            outfile.write('Chromosome=%s start=%i end=%i\n'
-                    %(chromo,start_pos,start_pos +length -1))
+            outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
+                    %(chromo,start_pos,start_pos +length -1,score))
+            outfile.write('Forward primer: %s\n'%(output[0]))
+            outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]:])))
+
             for line in output:
                 outfile.write(line+'\n')
             outfile.write('\n\n')
+    after_time = time()
+
+    print("Time_taken = %f" %(after_time - before_time))
 
 
-
-
-
-
-    print("HEEEEEEEEEEYYYYYYYYYYYY!!!!!!! FILE IS DONE!!!!!")
-    bases = ['A','T','G','C']
-    
-    
-    tile_sizes = [100,101,102,103,104,105,106,107,108,109,110]
-    template_length = 1000
-    template = ''
-    for b in [bases[randint(0,3)] for i in range(template_length3)]:
-        template3 +=b
-    template_length -= max(tile_sizes)
-
-    pos = max(tile_sizes) + PRIMER_LENGTH
-    print("region size ~ %i\n"
-          %(template_length))
-
-    before = time()
-    tiling = design(template, tile_sizes, pos, template_length)
-    after = time()
-
-    visualise(template,tiling[0], pos, pos + template_length, tiling[1] )
-    print("The corresponding tiling in the\n"
-          "format [start_pos, tile sizes] is: \n\n",
-          tiling, '\n')
-    print("CALLS = %i "%CALLS)
-    print("MEMO call = %i"%MEMO_CALLS)
-    print("MEMO length = number of new CALLS = %i" %len(MEMO))
-    print("Time_taken = %f" %(after - before))
-    quiting = raw_input("\n\n\nPress return/enter to quit")
-    print("Thanks :) ")
 
 
 if __name__ == "__main__":
