@@ -97,11 +97,8 @@ def design(template, tile_sizes, pos, length, primer_length, length_var,target_t
           starting position of the region of interest
     length : an integer specify the length of the region of interest.
     """
-    # Initialisation
-    # best_score is initialise to -inf since
-    # current scoring allows -ve score
     best_combination = []
-    best_score = -10000000
+    best_score = 0
     best_lengths = []
     # loop through each possible tile sizes and
     # all its possible overlap configuration
@@ -151,19 +148,13 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
     Uses memoization (Dynamic programming) to make this algorithm linear
     in the variable length, len(tile_sizes)
     """
-    # keeping track of how many calls are made to this function
-    
-    #if length <= 0: #non-positive length not tilable.
-    #    return ([],0)
     
     # Memoization
     if suffix_pos in MEMO:
         return MEMO[suffix_pos]
 
-    # initialisation : best_score intialise to -inf
-    # since allow -ve score
     best_tiling = [suffix_pos]
-    best_score = -10000
+    best_score = 0
     best_primer_lens = [(primer_length,primer_length)]
     for size in tile_sizes:
         prefix_primers = tile_primer_lens(template,
@@ -333,6 +324,7 @@ def main():
             for line in output:
                 outfile.write(line+'\n')
             outfile.write('\n\n')
+        outfile.flush()
     after_time = time()
 
     print("Time_taken = %f" %(after_time - before_time))
