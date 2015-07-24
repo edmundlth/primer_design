@@ -62,8 +62,8 @@ PRIMER_LENGTH :: Int
 
 from Bio import SeqIO
 from score import (score_tile, score_primer,
-                   get_primer,
-                   dimer_score)
+                   get_primer, dimer_score,
+                   rev_complement)
 from utils import visualise, visualise_tile, bed_coords
 from time import time
 from random import randint
@@ -144,7 +144,7 @@ def design(template, tile_sizes, pos, length, primer_length, length_var):
                 best_score = new_score
                 best_lengths = first_primer_lengths\
                         + best_suffix_design[2] 
-    print("Best score = %f" %best_score)
+    # print("Best score = %f" %best_score)
     return best_combination,best_lengths, best_score
                                                
 
@@ -305,17 +305,18 @@ def main():
     start_log(args.log)
     coords = bed_coords(args.bed)
     sequences = {}
-    print(args.fa)
-    for fasta in args.fa:
-        print(fasta)
-        seq_records = SeqIO.parse(fasta,'fasta')
-        for record in seq_records:
-            sequences[record.id] = record.seq
+#    for fasta in args.fa:
+#        seq_records = SeqIO.parse(fasta,'fasta')
+#        for record in seq_records:
+#            sequences[record.id] = record.seq
     outfile = open(args.outfile,'w')
     primer_len = args.primer_len
     len_var = args.len_var
     tile_sizes = [args.tiles[0] + i for i in range(args.tiles[1] +1) ]
+    sequences = {}
     for chromo, start_pos, length in coords:
+        if chromo not in sequences:
+            sequences[chromo] = next(SeqIO.parse('fasta/%s.fa'%chromo, 'fasta')).seq
         template = sequences[chromo]
         tile_lengths, primer_lengths,score = design(template,
                                                     tile_sizes,
@@ -330,46 +331,52 @@ def main():
             tile = (pos, length)
             output = visualise_tile(template, tile, f_r_len)
 
-            outfile.write('Chromosome=%s start=%i end=%i\n'
-                    %(chromo,start_pos,start_pos +length -1))
+            outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
+                    %(chromo,start_pos,start_pos +length -1,score))
+            outfile.write('Forward primer: %s\n'%(output[0]))
+            outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]:])))
+
             for line in output:
                 outfile.write(line+'\n')
             outfile.write('\n\n')
 
-
-
-
-
-
-    print("HEEEEEEEEEEYYYYYYYYYYYY!!!!!!! FILE IS DONE!!!!!")
-    bases = ['A','T','G','C']
-    
-    
-    tile_sizes = [100,101,102,103,104,105,106,107,108,109,110]
-    template_length = 1000
-    template = ''
-    for b in [bases[randint(0,3)] for i in range(template_length3)]:
-        template3 +=b
-    template_length -= max(tile_sizes)
-
-    pos = max(tile_sizes) + PRIMER_LENGTH
-    print("region size ~ %i\n"
-          %(template_length))
-
-    before = time()
-    tiling = design(template, tile_sizes, pos, template_length)
-    after = time()
-
-    visualise(template,tiling[0], pos, pos + template_length, tiling[1] )
-    print("The corresponding tiling in the\n"
-          "format [start_pos, tile sizes] is: \n\n",
-          tiling, '\n')
     print("CALLS = %i "%CALLS)
     print("MEMO call = %i"%MEMO_CALLS)
     print("MEMO length = number of new CALLS = %i" %len(MEMO))
     print("Time_taken = %f" %(after - before))
-    quiting = raw_input("\n\n\nPress return/enter to quit")
-    print("Thanks :) ")
+
+
+
+
+
+#    print("HEEEEEEEEEEYYYYYYYYYYYY!!!!!!! FILE IS DONE!!!!!")
+#    bases = ['A','T','G','C']
+    
+    
+#    tile_sizes = [100,101,102,103,104,105,106,107,108,109,110]
+#    template_length = 1000
+#    template = ''
+#    for b in [bases[randint(0,3)] for i in range(template_length3)]:
+#        template +=b
+#    template_length -= max(tile_sizes)
+
+ #   pos = max(tile_sizes) + PRIMER_LENGTH
+ #   print("region size ~ %i\n"
+ #         %(template_length))
+
+#    before = time()
+#    tiling = design(template, tile_sizes, pos, template_length)
+#    after = time()
+
+#    visualise(template,tiling[0], pos, pos + template_length, tiling[1] )
+#    print("The corresponding tiling in the\n"
+#          "format [start_pos, tile sizes] is: \n\n", tiling, '\n')
+#    print("CALLS = %i "%CALLS)
+#    print("MEMO call = %i"%MEMO_CALLS)
+#    print("MEMO length = number of new CALLS = %i" %len(MEMO))
+#    print("Time_taken = %f" %(after - before))
+#    quiting = raw_input("\n\n\nPress return/enter to quit")
+#    print("Thanks :) ")
 
 
 if __name__ == "__main__":
