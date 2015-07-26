@@ -78,7 +78,7 @@ sys.setrecursionlimit(10000)
 # MEMO is used in dynamic programming's memoization
 MEMO = {}
 
-def design(template, tile_sizes, pos, length, primer_length, length_var,target_tm):
+def design(template, tile_sizes, tile_overlap, pos, length, primer_length, length_var,target_tm):
     """
     This is the primary function of this program. It takes in a
     DNA template a specifed region of interest and tile it so that:
@@ -123,6 +123,7 @@ def design(template, tile_sizes, pos, length, primer_length, length_var,target_t
 
             best_suffix_design = suffix_design(template,
                                                tile_sizes,
+                                               tile_overlap,
                                                suffix_pos,
                                                suffix_length,
                                                primer_length,
@@ -131,8 +132,8 @@ def design(template, tile_sizes, pos, length, primer_length, length_var,target_t
             
             new_score = first_tile_score + best_suffix_design[1]
             if new_score > best_score:
-                best_combination = [prefix_pos , size] +\
-                                   best_suffix_design[0][1:]
+                best_combination = [first_tile] +\
+                                   best_suffix_design[0]
                 best_score = new_score
                 best_lengths = first_primer_lengths\
                         + best_suffix_design[2] 
@@ -140,7 +141,7 @@ def design(template, tile_sizes, pos, length, primer_length, length_var,target_t
     return best_combination,best_lengths, best_score
                                                
 
-def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_var,target_tm):
+def suffix_design(template, tile_sizes, tile_overlap, suffix_pos, length,primer_length,length_var,target_tm):
     """
     Recursively tile the template starting from suffix_pos,
     with appropriate tile sizes so that the resultant primer combination
@@ -157,29 +158,33 @@ def suffix_design(template, tile_sizes, suffix_pos, length,primer_length,length_
     best_score = 0
     best_primer_lens = [(primer_length,primer_length)]
     for size in tile_sizes:
-        prefix_primers = tile_primer_lens(template,
-                                          (suffix_pos, size),
-                                           primer_length,
-                                           length_var,
-                                           target_tm)
-        prefix_score = prefix_primers[0]
-        prefix_primer_lengths = [prefix_primers[1]] 
-        if size >= length: # base case
-            new_tiling = [suffix_pos,size]
-            new_score = prefix_score
-            new_primer_lengths = prefix_primer_lengths
-        else:
-            # recursion: solve same problem for the suffix of suffix
-            rest = suffix_design(template,
-                                 tile_sizes,
-                                 suffix_pos + size,
-                                 length - size,
-                                 primer_length,
-                                 length_var,
-                                 target_tm)
-            new_tiling = [suffix_pos,size] + rest[0][1:]
-            new_score = prefix_score + rest[1]
-            new_primer_lengths = prefix_primer_lengths + rest[2]
+        for overlap in range(tile_overlap):
+            shifted_pos = suffix_pos - overlap
+            shifted_length = length + overlap
+            prefix_primers = tile_primer_lens(template,
+                                              (shifted_pos, size),
+                                              primer_length,
+                                              length_var,
+                                              target_tm)
+            prefix_score = prefix_primers[0]
+            prefix_pair_lengths = [prefix_primers[1]]
+            if size >= shifted_length: # base case
+                new_tiling = [(shifted_pos,size)]
+                new_score = prefix_score
+                new_primer_lengths = prefix_pair_lengths
+            else:
+                # recursion: solve same problem for the suffix of suffix
+                rest = suffix_design(template,
+                                     tile_sizes,
+                                     tile_overlap,
+                                     shifted_pos + size,
+                                     shifted_length - size,
+                                     primer_length,
+                                     length_var,
+                                     target_tm)
+                new_tiling = [(shifted_pos,size)] + rest[0]
+                new_score = prefix_score + rest[1]
+                new_primer_lengths = prefix_pair_lengths + rest[2]
 
         if new_score > best_score:
             best_tiling = new_tiling
@@ -226,27 +231,6 @@ def tile_primer_lens(template, tile, primer_length, var,target_tm):
 
 
 
-
-def tile_primer_lens1(template, tile, primer_length, var):
-    '''Depreciated! 
-    This the orginal function that returns the best scored
-    primer lengths choices of a particular tile considering
-    tile primer dimerisation. Because of that consideration, 
-    it has be check all v^2 number of primers, where
-    v = var = primer_length_variation.'''
-    best_score = -100000 
-    best_lengths = (primer_length, primer_length)
-    vary_range = range(-var, var +1)
-    for f_vary in vary_range:
-        for r_vary in vary_range:
-            f_len = primer_length + f_vary
-            r_len = primer_length + r_vary
-            new_score = score_tile(template, tile, f_len, r_len)  
-            if new_score > best_score:
-                best_score = new_score
-                best_lengths = (f_len, r_len) 
-    return (best_score, best_lengths) 
-
 DEFAULT_LOG_FILE = "primer_design.log"
 
 def parse_args():
@@ -256,6 +240,8 @@ def parse_args():
                     default = DEFAULT_LOG_FILE, help = 'Log file. Default to %s'%DEFAULT_LOG_FILE)
     parser.add_argument('--primer_len', metavar = 'p', type = int,
                     default = 20, help = 'An integer specifying the optimal primer length, default to 20')
+    parser.add_argument('--tile_overlap', metavar = 'overlap', type = int,
+                    default = 5, help = 'An integer specifying the allowed overlaping of tiles')
     parser.add_argument('--outfile', type = str, default = 'primer_out.txt', 
                     help = 'Specify the file name where the records of the program output will be written')
     parser.add_argument('--len_var', type = int, default = 5,
@@ -286,7 +272,6 @@ def start_log(log):
     logging.info('command line: {0}'.format(' '.join(sys.argv)))
 
 def main():
-    before_time = time()
     args = parse_args()
     start_log(args.log)
     coords = bed_coords(args.bed)
@@ -294,27 +279,29 @@ def main():
     outfile = open(args.outfile,'w')
     primer_len = args.primer_len
     len_var = args.len_var
+    tile_overlap = args.tile_overlap
     tile_sizes = [args.tiles[0] + i for i in range(args.tiles[1] +1) ]
     sequences = {}
     for chromo, start_pos, length in coords:
+        before_time = time()
         MEMO = {} # memo for dynamic programing. Refresh so that it's empty for every exon
         if chromo not in sequences:
             #currently we only have one sequence per fasta file
             sequences[chromo] = next(SeqIO.parse('fasta/%s.fa'%chromo, 'fasta')).seq
         template = sequences[chromo]
-        tile_lengths, primer_lengths,score = design(template,
+        tiling, pair_lengths,score = design(template,
                                                     tile_sizes,
+                                                    tile_overlap,
                                                     start_pos,
                                                     length,
                                                     primer_len,
                                                     len_var,
                                                     target_tm)
-        pos = tile_lengths[0]
-        for i in range(len(primer_lengths)):
-            f_r_len = primer_lengths[i]
-            length = tile_lengths[i+1]
-            tile = (pos, length)
-            output = visualise_tile(template, tile, f_r_len)
+        for i in range(len(pair_lengths)):
+            f_r_len = pair_lengths[i]
+            #length = tile_lengths[i+1]
+            #tile = (pos, length)
+            output = visualise_tile(template, tiling[i], f_r_len)
 
             outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
                     %(chromo,start_pos,start_pos +length -1,score))
@@ -325,9 +312,9 @@ def main():
                 outfile.write(line+'\n')
             outfile.write('\n\n')
         outfile.flush()
-    after_time = time()
+        after_time = time()
+        print("time taken:%s\nexon length:%s\n"%(after_time - before_time,length))
 
-    print("Time_taken = %f" %(after_time - before_time))
 
 
 
