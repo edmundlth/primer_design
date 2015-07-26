@@ -124,7 +124,10 @@ def entropy_score(primer):
 
 def tm_score(primer,target_tm):
     """We assume the input is temperature in Celsius
-    greater than 0 degC!!!"""
+    greater than 0 degC!!!
+    From experiment with random sequences, the reverse
+    complement of a sequence has the same Tm to 
+    at least 5 decimal places."""
     if primer: #if primer sequence is not empty
         del_tm = Tm_NN(primer) - target_tm
     else:
@@ -153,17 +156,18 @@ def tm_score(primer,target_tm):
     
 def gc_score(primer):
     primer = primer.upper()
-    fraction = primer.count('G') + primer.count('C')
-    normalised_gc = fraction * 100.0
+    count = float(primer.count('G') + primer.count('C'))
+    normalised_gc = count/len(primer) * 100.0
     return normalised_gc
 
 
 def run_score(primer):
     # run = max continuous run
+
     run =  max(len(list(group[1]))-1
                for group in itertools.groupby(primer.upper()))
     #normalise number of runs by the length of primer
-    normalised_run = 100 * (1 - run / len(primer))
+    normalised_run = 100 * (1 - float(run) / len(primer))
     return normalised_run
 
 
@@ -253,10 +257,21 @@ def rev_complement(seq):
     complement = {'A':'T','G':'C','C':'G','T':'A'}
     return ''.join(complement[base] for base in seq)[::-1]
 
+############ TEST CASES #################################
 
+if __name__ == '__main__':
+    bases = ['A','T','G','C']
+    for i in range(5):
+        primer = ''.join([bases[random.randint(0,3)] 
+                       for i in range(23)])
 
-
-
+        target_tm = 64.0
+        print('gc_score:%s'%gc_score(primer))
+        print('run_score:%s'%run_score(primer))
+        print('entropy_score:%s'%entropy_score(primer))
+        print('hairpin_score:%s'%hairpin_score(primer))
+        print('tm_score:%s'%tm_score(primer,target_tm))
+        print('total_score: %s\n'%score_primer(primer,target_tm))
 
 
 ######## Depreciated functions #######################
