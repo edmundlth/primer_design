@@ -252,6 +252,11 @@ def get_primer(template, tile, primer_length, which_primer = 'f'):
     else:
         raise ValueError('Input f or r to specify forward or reverse primer')
 
+def complement(seq):
+    seq = seq.upper()
+    complement = {'A':'T','G':'C','T':'A','C':'G'}
+    return ''.join(complement[base] for base in seq)
+
 def rev_complement(seq):
     seq = seq.upper()
     complement = {'A':'T','G':'C','C':'G','T':'A'}

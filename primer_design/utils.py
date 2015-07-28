@@ -12,7 +12,7 @@ Provide the utilitis which enable
 """
 
 
-from score import rev_complement
+from score import rev_complement,complement
 
 def visualise_tile(template, tile, f_r_lens):
     template = str(template)
@@ -20,17 +20,22 @@ def visualise_tile(template, tile, f_r_lens):
     end = tile[0] + tile[1]
     f_len, r_len = f_r_lens
     relevant_template = template[start - f_len:end + r_len]
-    f_primer = relevant_template[:f_len]
-    f_bond = '|' * f_len
-    r_primer = ' ' * (end - start + f_len)\
-                 + relevant_template[- r_len:]
-    r_bond = ' ' * (end - start + f_len) + '|' * r_len
-    #print(f_primer)
-    #print(f_bond)
-    #print(relevant_template)
-    #print(r_bond)
-    #print(r_primer)
-    return (f_primer, f_bond, relevant_template, r_bond, r_primer)
+    complement_template = complement(relevant_template)
+    f_primer ="5'>" +  relevant_template[:f_len] + ">3'"
+    f_bond =' '*3 + '|' * f_len
+    r_primer = ' ' * (end - start + f_len)+"3'<"\
+                 + complement(relevant_template[- r_len:])+"<5'"
+    r_bond = ' ' * (end - start + f_len+3) + '|' * r_len
+    relevant_template = "5'>" + relevant_template + ">3'"
+    complement_template = "3'<" + complement_template + "<5'"
+    print(relevant_template)
+    print(r_bond)
+    print(r_primer)
+    print(f_primer)
+    print(f_bond)
+    print(complement_template)
+    return (relevant_template, r_bond, r_primer,
+            f_primer, f_bond, complement_template)
 
 
 

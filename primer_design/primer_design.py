@@ -250,7 +250,7 @@ def parse_args():
                     help = '''A pair of integers that specify the minimum tile size and 
                     the range of tile sizes. eg --tiles 100 5 means the tile sizes are
                     100, 101, 102, 103, 104, 105''')
-    parser.add_argument('--tm', metavar = 'tm', type = float, default = 60.0, 
+    parser.add_argument('--tm', metavar = 'tm', type = float, default = 64.0, 
                     help = '''A floating point number specifying the optimal melting temperature,default to 60.0 degC''')
     parser.add_argument('--fa', type = str, nargs='*', 
                     help = '''The fasta file containing the DNA sequence where the regions of interest are embeded in''')
@@ -272,6 +272,7 @@ def start_log(log):
     logging.info('command line: {0}'.format(' '.join(sys.argv)))
 
 def main():
+    global MEMO
     args = parse_args()
     start_log(args.log)
     coords = bed_coords(args.bed)
@@ -285,6 +286,7 @@ def main():
     for chromo, start_pos, length in coords:
         before_time = time()
         MEMO = {} # memo for dynamic programing. Refresh so that it's empty for every exon
+        print(MEMO)
         if chromo not in sequences:
             #currently we only have one sequence per fasta file
             sequences[chromo] = next(SeqIO.parse('fasta/%s.fa'%chromo, 'fasta')).seq
@@ -299,14 +301,12 @@ def main():
                                                     target_tm)
         for i in range(len(pair_lengths)):
             f_r_len = pair_lengths[i]
-            #length = tile_lengths[i+1]
-            #tile = (pos, length)
             output = visualise_tile(template, tiling[i], f_r_len)
 
             outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
                     %(chromo,start_pos,start_pos +length -1,score))
-            outfile.write('Forward primer: %s\n'%(output[0]))
-            outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]:])))
+            outfile.write('Forward primer: %s\n'%(output[3][3:-3]))
+            outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]-3:-3])))
 
             for line in output:
                 outfile.write(line+'\n')
