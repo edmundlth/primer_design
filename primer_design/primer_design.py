@@ -61,7 +61,14 @@ PRIMER_LENGTH :: Int
 """
 
 from Bio import SeqIO
-from score import (score_tile, score_primer,
+from score import (score_primer_Lp_3,
+                   score_primer_Lp,
+                   score_primer_linear,
+                   score_primer_linear_3, 
+                   score_primer_sum_3,
+                   score_primer_sum
+                  )
+from score_utils import (score_tile,
                    get_primer, dimer_score,
                    rev_complement)
 from utils import visualise, visualise_tile, bed_coords
@@ -77,6 +84,8 @@ sys.setrecursionlimit(10000)
 # GLOBAL VARIABLES
 # MEMO is used in dynamic programming's memoization
 MEMO = {}
+# Choice of scoring funciton
+score_primer = score_primer_Lp_3
 
 def design(template, tile_sizes, tile_overlap, pos, length, primer_length, length_var,target_tm):
     """
@@ -256,6 +265,14 @@ def parse_args():
                     help = '''The fasta file containing the DNA sequence where the regions of interest are embeded in''')
     parser.add_argument('--bed', type = str,
                     help = '''The BED file where the coordinates of the regions of interest are written in''')
+    parser.add_argument('--score_func', type = str, default = 'score_primer_Lp_3',
+                    help = '''A string which give the name of the scoring function desired to be used.
+                              the options include:
+                           score_primer_Lp,
+                           score_primer_linear,
+                           score_primer_linear_3, 
+                           score_primer_sum_3,
+                           score_primer_sum ''')
     return parser.parse_args()
 
 def start_log(log):
@@ -272,16 +289,38 @@ def start_log(log):
     logging.info('command line: {0}'.format(' '.join(sys.argv)))
 
 def main():
-    global MEMO
+    global MEMO, score_primer
     args = parse_args()
-    start_log(args.log)
-    coords = bed_coords(args.bed)
-    target_tm = args.tm
-    outfile = open(args.outfile,'w')
+    bed_file = args.bed
     primer_len = args.primer_len
+    target_tm = args.tm
     len_var = args.len_var
+    outfile = args.outfile
     tile_overlap = args.tile_overlap
-    tile_sizes = [args.tiles[0] + i for i in range(args.tiles[1] +1) ]
+    tiles = args.tiles
+    scoring = args.score_func
+
+    # determining the scoring function to use
+    # bind the relevant function to the generic
+    # score_primer() function used in this script
+    if scoring == 'score_primer_Lp_3':
+        score_primer = score_primer_Lp_3
+    elif scoring == 'score_primer_Lp':
+        score_primer = score_primer_Lp
+    elif scoring == 'score_primer_linear':
+        score_primer = score_primer_linear
+    elif scoring == 'score_primer_linear_3':
+        score_primer = score_primer_linear_3
+    elif scoring == 'score_primer_sum_3':
+        score_primer = score_primer_sum_3
+    elif scoring == 'score_primer_sum':
+        score_primer = score_primer_sum
+
+
+    start_log(args.log)
+    coords = bed_coords(bed_file)
+    outfile = open(outfile,'w')
+    tile_sizes = [tiles[0] + i for i in range(args.tiles[1] +1) ]
     sequences = {}
     for chromo, start_pos, length in coords:
         before_time = time()

@@ -12,7 +12,7 @@ Provide the utilitis which enable
 """
 
 
-from score import rev_complement,complement
+from score_utils import rev_complement,complement
 
 def visualise_tile(template, tile, f_r_lens):
     template = str(template)
