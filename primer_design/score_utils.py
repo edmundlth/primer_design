@@ -262,7 +262,7 @@ def weighted_num_complement(seq1,seq2):
         if is_complement(b1,b2):
             b1 = b1.upper()
             if b1 == 'G' or b1 == 'C':
-                weighted_num_complement +=2
+                weighted_num_complement +=1.5
             else:
                 weighted_num_complement +=1
     return weighted_num_complement
