@@ -61,17 +61,19 @@ PRIMER_LENGTH :: Int
 """
 
 from Bio import SeqIO
-from score import (score_primer_Lp_3,
+from score import (
+                   score_primer_Lp_3,
                    score_primer_Lp,
                    score_primer_linear,
                    score_primer_linear_3, 
                    score_primer_sum_3,
                    score_primer_sum
                   )
-from score_utils import (score_tile,
-                   get_primer, dimer_score,
-                   rev_complement)
-from utils import visualise, visualise_tile, bed_coords
+from score_utils import dimer_score
+from utils import  (generate_output_pair,
+                    write_primer,
+                    visualise_tile, bed_coords,
+                    get_primer, rev_complement)
 from time import time
 from random import randint
 from argparse import ArgumentParser
@@ -325,7 +327,6 @@ def main():
     for chromo, start_pos, length in coords:
         before_time = time()
         MEMO = {} # memo for dynamic programing. Refresh so that it's empty for every exon
-        print(MEMO)
         if chromo not in sequences:
             #currently we only have one sequence per fasta file
             sequences[chromo] = next(SeqIO.parse('fasta/%s.fa'%chromo, 'fasta')).seq
@@ -340,17 +341,23 @@ def main():
                                                     target_tm)
         for i in range(len(pair_lengths)):
             f_r_len = pair_lengths[i]
-            output = visualise_tile(template, tiling[i], f_r_len)
+            output_pair = generate_output_pair(template, tiling[i], f_r_len)
+            print( output_pair)
+            write_func = lambda x: write_primer(x, outfile)
+            map(write_func, output_pair)
 
-            outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
-                    %(chromo,start_pos,start_pos +length -1,score))
-            outfile.write('Forward primer: %s\n'%(output[3][3:-3]))
-            outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]-3:-3])))
+            
+            #output = visualise_tile(template, tiling[i], f_r_len)
 
-            for line in output:
-                outfile.write(line+'\n')
-            outfile.write('\n\n')
-        outfile.flush()
+            #outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
+            #        %(chromo,start_pos,start_pos +length -1,score))
+            #outfile.write('Forward primer: %s\n'%(output[3][3:-3]))
+            #outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]-3:-3])))
+
+            #for line in output:
+            #    outfile.write(line+'\n')
+            #outfile.write('\n\n')
+        #outfile.flush()
         after_time = time()
         print("time taken:%s\nexon length:%s\n"%(after_time - before_time,length))
 
