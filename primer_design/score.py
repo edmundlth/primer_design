@@ -12,7 +12,7 @@ import random
 from score_utils import (tm_score, entropy_score,
                          run_score, gc_score,
                          hairpin_score, dimer_score,
-                         self_dimer_score, gc_clamp)
+                         self_dimer_score, gc_clamp_score)
 
 
 
@@ -30,7 +30,7 @@ This is a function primer sequence(string) -> Real number """
     gc = gc_score(primer)
     hairpin =  hairpin_score(primer)
     entropy = entropy_score(primer)
-    clamp = gc_clamp(primer, which_primer)
+    clamp = gc_clamp_score(primer, which_primer)
     score = (Tm ** p + run ** p \
            + gc ** p + hairpin ** p \
            + entropy ** p + clamp ** p) ** (1.0/p)
@@ -52,7 +52,7 @@ This is a function primer sequence(string) -> Real number """
     entropy_3prime = entropy_score(primer_3prime)
     gc_3prime = gc_score(primer_3prime)
     run_3prime = run_score(primer_3prime)
-    clamp = gc_clamp(primer, which_primer)
+    clamp = gc_clamp_score(primer, which_primer)
 
     score = (Tm ** p + run ** p \
             + gc ** p + hairpin ** p \
@@ -72,7 +72,7 @@ This is a function primer sequence(string) -> Real number """
     gc = gc_score(primer)
     hairpin =  hairpin_score(primer)
     entropy = entropy_score(primer)
-    clamp = gc_clamp(primer, which_primer)
+    clamp = gc_clamp_score(primer, which_primer)
     score =  Tm \
             + entropy\
             + clamp \
@@ -96,7 +96,7 @@ This is a function primer sequence(string) -> Real number """
     entropy_3prime = entropy_score(primer_3prime)
     gc_3prime = gc_score(primer_3prime)
     run_3prime = run_score(primer_3prime)
-    clamp = gc_clamp(primer, which_primer)
+    clamp = gc_clamp_score(primer, which_primer)
 
     score = 2 * entropy_3prime \
             + 2 * gc_3prime \
@@ -118,7 +118,7 @@ This is a function primer sequence(string) -> Real number """
     gc = gc_score(primer)
     hairpin =  hairpin_score(primer)
     entropy = entropy_score(primer)
-    clamp = gc_clamp(primer, which_primer)
+    clamp = gc_clamp_score(primer, which_primer)
 
     return Tm + run + gc + hairpin + entropy + clamp
 
@@ -138,12 +138,13 @@ This is a function primer sequence(string) -> Real number """
     entropy_3prime = entropy_score(primer_3prime)
     gc_3prime = gc_score(primer_3prime)
     run_3prime = run_score(primer_3prime)
+    clamp = gc_clamp_score(primer, which_primer)
     
     
     score = Tm + gc + entropy\
             + entropy_3prime\
             + gc_3prime + run\
-            + run_3prime + hairpin 
+            + run_3prime + hairpin + clamp
     return score
     
 

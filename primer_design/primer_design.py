@@ -61,6 +61,7 @@ PRIMER_LENGTH :: Int
 """
 
 from Bio import SeqIO
+from Bio.SeqUtils.MeltingTemp import (Tm_NN, Tm_GC, Tm_Wallace)
 from score import (
                    score_primer_Lp_3,
                    score_primer_Lp,
@@ -88,8 +89,11 @@ sys.setrecursionlimit(10000)
 MEMO = {}
 # Choice of scoring funciton
 score_primer = score_primer_Lp_3
+TM_FUNC = Tm_NN
 
-def design(template, tile_sizes, tile_overlap, pos, length, primer_length, length_var,target_tm):
+def design(template, tile_sizes, tile_overlap, pos, length, 
+           primer_length, length_var,
+           target_tm):
     """
     This is the primary function of this program. It takes in a
     DNA template a specifed region of interest and tile it so that:
@@ -148,7 +152,6 @@ def design(template, tile_sizes, tile_overlap, pos, length, primer_length, lengt
                 best_score = new_score
                 best_lengths = first_primer_lengths\
                         + best_suffix_design[2] 
-    # print("Best score = %f" %best_score)
     return best_combination,best_lengths, best_score
                                                
 
@@ -197,10 +200,10 @@ def suffix_design(template, tile_sizes, tile_overlap, suffix_pos, length,primer_
                 new_score = prefix_score + rest[1]
                 new_primer_lengths = prefix_pair_lengths + rest[2]
 
-        if new_score > best_score:
-            best_tiling = new_tiling
-            best_score = new_score
-            best_primer_lengths = new_primer_lengths
+            if new_score > best_score:
+                best_tiling = new_tiling
+                best_score = new_score
+                best_primer_lengths = new_primer_lengths
     result = (best_tiling, best_score, best_primer_lengths)
     
     # memoize the result
@@ -218,7 +221,7 @@ def tile_primer_lens(template, tile, primer_length, var,target_tm):
     the best scored combination
     The score is simply:
         score_primer(f_primer) + score_primer(r_primer)'''
-    best_f_score, best_r_score = -100000, -100000
+    best_f_score, best_r_score = 0, 0
     best_f_length, best_r_length = primer_length, primer_length
     vary_range = range(-var, var + 1)
     for vary in vary_range:
@@ -241,7 +244,7 @@ def tile_primer_lens(template, tile, primer_length, var,target_tm):
     return (best_score, best_lengths)
 
 
-
+##########################   Parsing command line arguments ############################################
 DEFAULT_LOG_FILE = "primer_design.log"
 
 def parse_args():
@@ -268,13 +271,59 @@ def parse_args():
     parser.add_argument('--bed', type = str,
                     help = '''The BED file where the coordinates of the regions of interest are written in''')
     parser.add_argument('--score_func', type = str, default = 'score_primer_Lp_3',
-                    help = '''A string which give the name of the scoring function desired to be used.
+                    help = '''A string which gives the name of the scoring function desired to be used.
                               the options include:
                            score_primer_Lp,
                            score_primer_linear,
                            score_primer_linear_3, 
                            score_primer_sum_3,
                            score_primer_sum ''')
+    parser.add_argument('--tm_func', type = str, default = 'Tm_NN',
+                   help = '''A string which gives the name of the Melting Temperature prediction algorithm to be used.
+                             The options include (from Biopython Bio.SeqUtils.MeltingTemp module):
+                             Tm_NN
+                             Tm_GC
+                             Tm_Wallace ''')
+    parser.add_argument('--Na', type = float, metavar = 'Na', default = 50.0,
+                  help = '''Specify the concentration of sodium ions in the PCR reaction in Millimolar.''')
+    parser.add_argument('--Mg', type = float, metavar = 'Mg', default = 0.0,
+                  help = ''' Specify the concentration of magnesium ions in the PCR reaction in Millimolar.''')
+    parser.add_argument('--K', type = float, metavar = 'K', default = 0.0,
+                  help = ''' Specify the concentration of potassium ions in the PCR reaction in Millimolar.''')
+    parser.add_argument('--dNTPs', type = float, metavar = 'dNTPs', default = 0.0,
+                  help = ''' Specify the concentration of potassium ions in the PCR reaction in Millimolar.''')
+    parser.add_argument('--DMSO', type = float, metavar = 'DMSO', default = 0.0,
+                  help = ''' Specify the concentration of Dymethyl sulfoxidein the PCR reaction in Millimolar.''')
+    parser.add_argument('--Tris', type = float, metavar = 'Tris', default = 0.0,
+                  help = ''' Specify the concentration of Tris in PCR reaction in Millimolar''')
+    parser.add_argument('--saltcorr', type = int, default = 1, 
+                  help = ''' An integer specifying the method of calculating salt correction during Tm calculation.
+                             Refer to : 
+                                  - http://biopython.org/DIST/docs/api/Bio.SeqUtils.MeltingTemp-pysrc.html
+                             methods 1-4: Tm(new) = Tm(old) + corr 
+                               - method 5: deltaH(new) = deltaH(old) + corr
+                               - methods 6+7: Tm(new) = 1/(1/Tm(old) + corr) 
+                         
+                         Methods 1-4 correct Tm, method 5 
+                         corrects deltaS, methods 6 and 7 correct 1/Tm. The methods are: 
+                                  1. 16.6 x log[Na+] 
+                                     (Schildkraut & Lifson (1965), Biopolymers 3: 195-208) 
+                                  2. 16.6 x log([Na+]/(1.0 + 0.7*[Na+])) 
+                                     (Wetmur (1991), Crit Rev Biochem Mol Biol 126: 227-259) 
+                                  3. 12.5 x log(Na+] 
+                                     (SantaLucia et al. (1996), Biochemistry 35: 3555-3562 
+                                  4. 11.7 x log[Na+] 
+                                     (SantaLucia (1998), Proc Natl Acad Sci USA 95: 1460-1465 
+                                  5. Correction for deltaS: 0.368 x (N-1) x ln[Na+] 
+                                     (SantaLucia (1998), Proc Natl Acad Sci USA 95: 1460-1465) 
+                                  6. (4.29(%GC)-3.95)x1e-5 x ln[Na+] + 9.40e-6 x ln[Na+]^2 
+                                     (Owczarzy et al. (2004), Biochemistry 43: 3537-3554) 
+                                  7. Complex formula with decision tree and 7 empirical constants. 
+                                     Mg2+ is corrected for dNTPs binding (if present) 
+                                    (Owczarzy et al. (2008), Biochemistry 47: 5336-5353) ''')
+    parser.add_argument('--GCweight', type = float, metavar = 'GCweight', default = 1.5,
+                  help = '''An number >1.0 specifying the weight of GC effect in primer
+                  dimer or hairpin.''')
     return parser.parse_args()
 
 def start_log(log):
@@ -289,9 +338,10 @@ def start_log(log):
     logging.info('program started')
     # Log the command line that was used to run the program
     logging.info('command line: {0}'.format(' '.join(sys.argv)))
+################################### ############################################################################
 
 def main():
-    global MEMO, score_primer
+    global MEMO, score_primer, TM_FUNC
     args = parse_args()
     bed_file = args.bed
     primer_len = args.primer_len
@@ -301,6 +351,18 @@ def main():
     tile_overlap = args.tile_overlap
     tiles = args.tiles
     scoring = args.score_func
+    tm_func = args.tm_func
+    na_conc = args.Na
+    k_conc = args.K
+    mg_conc = args.Mg
+    dntps_conc = args.dNTPs
+    dmso_conc = args.DMSO
+    salt_corr_method = args.saltcorr
+    tris_conc = args.Tris
+    gc_weight = args.GCweight
+
+    # Redefine Tm_NN, Tm_GC, Tm_Wallace function with 
+    # other salt and chemistry correction input given
 
     # determining the scoring function to use
     # bind the relevant function to the generic
@@ -319,10 +381,32 @@ def main():
         score_primer = score_primer_sum
 
 
+    # determining the Melting Temperature function to use
+    # bind the relevant function data to TM_FUNC name.
+    if tm_func == 'Tm_NN':
+        TM_FUNC = lambda seq: Tm_NN(seq, Na = na_conc, 
+                                    K = k_conc, Mg = mg_conc,
+                                    dNTPs = dntps_conc, 
+                                    saltcorr = salt_corr_method,
+                                    Tris = tris_conc)
+    elif tm_func == 'Tm_GC':
+        TM_FUNC = lambda seq: Tm_GC(seq, Na = na_conc, K = k_conc,
+                                    Tris = tris_conc,
+                                    Mg = mg_conc,
+                                    saltcorr = salt_corr_method)
+    elif tm_func == 'Tm_Wallace':
+        TM_FUNC = Tm_Wallace
+    else:
+        print('tm_func choices: Tm_NN, Tm_GC, Tm_Wallace')
+        raise ValueError
+
     start_log(args.log)
     coords = bed_coords(bed_file)
+
     outfile = open(outfile,'w')
-    tile_sizes = [tiles[0] + i for i in range(args.tiles[1] +1) ]
+    out_header = ['name','primer', 'tm', 'entropy', 'hairpin', 'gc', 'gc_clamp', 'run', 'length']
+    outfile.write('\t'.join(out_header) + '\n')
+    tile_sizes = [tiles[0] + i for i in range(tiles[1] +1) ]
     sequences = {}
     for chromo, start_pos, length in coords:
         before_time = time()
@@ -332,32 +416,21 @@ def main():
             sequences[chromo] = next(SeqIO.parse('fasta/%s.fa'%chromo, 'fasta')).seq
         template = sequences[chromo]
         tiling, pair_lengths,score = design(template,
-                                                    tile_sizes,
-                                                    tile_overlap,
-                                                    start_pos,
-                                                    length,
-                                                    primer_len,
-                                                    len_var,
-                                                    target_tm)
+                                            tile_sizes,
+                                            tile_overlap,
+                                            start_pos,
+                                            length,
+                                            primer_len,
+                                            len_var,
+                                            target_tm)
         for i in range(len(pair_lengths)):
             f_r_len = pair_lengths[i]
-            output_pair = generate_output_pair(template, tiling[i], f_r_len)
+            output_pair = generate_output_pair(template, chromo, i+1, tiling[i], f_r_len)
             print( output_pair)
             write_func = lambda x: write_primer(x, outfile)
             map(write_func, output_pair)
 
-            
-            #output = visualise_tile(template, tiling[i], f_r_len)
-
-            #outfile.write('Chromosome=%s start=%i end=%i score=%s\n'
-            #        %(chromo,start_pos,start_pos +length -1,score))
-            #outfile.write('Forward primer: %s\n'%(output[3][3:-3]))
-            #outfile.write('Reverse primer: %s\n'%(rev_complement(output[2][-f_r_len[1]-3:-3])))
-
-            #for line in output:
-            #    outfile.write(line+'\n')
-            #outfile.write('\n\n')
-        #outfile.flush()
+        outfile.flush() 
         after_time = time()
         print("time taken:%s\nexon length:%s\n"%(after_time - before_time,length))
 

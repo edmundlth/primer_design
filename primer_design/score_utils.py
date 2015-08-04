@@ -103,7 +103,7 @@ def hairpin_score(primer):
     normalised_num_match = 100 * (1 - num_match / (length/2.0))
     return normalised_num_match
 
-def gc_clamp(primer, which_primer = 'f'):
+def gc_clamp_score(primer, which_primer = 'f'):
     if which_primer == 'f':
         end_with = primer[-1].upper()
     elif which_primer == 'r':

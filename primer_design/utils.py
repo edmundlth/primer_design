@@ -14,21 +14,31 @@ from Bio.SeqUtils.MeltingTemp import Tm_NN, Tm_GC, Tm_Wallace
 import math
 import itertools
 
-def generate_output_pair(template, tile, f_r_lens):
+def generate_output_pair(template, chromo, tile_index, tile, f_r_lens):
     start = tile[0]
     end = tile[0] + tile[1]
     f_len, r_len = f_r_lens
     relevant_template = str(template[start - f_len: end + r_len])
-    f_primer = relevant_template[:f_len]
-    r_primer = rev_complement(relevant_template[-r_len:])
-    output = []
-    for primer in [f_primer, r_primer]:
-        info = map(str,(primer, raw_tm(primer), raw_entropy(primer), 
-              raw_hairpin(primer), raw_gc(primer),
-              raw_gc_clamp(primer)))
-        output.append(info)
-    return tuple(output)
 
+    f_primer = relevant_template[:f_len]
+    f_primer_name = chromo +'_'+ str(start) \
+                    + '_' + str(tile[1]) \
+                    + '_'+ 'F' + str(tile_index)
+    r_primer = rev_complement(relevant_template[-r_len:])
+    r_primer_name = chromo +'_'+ str(start) \
+                    + '_' + str(tile[1]) \
+                    + '_'+ 'R' + str(tile_index)
+
+    output = (
+            [f_primer_name, f_primer] + map(str,raw_info(f_primer)),
+            [r_primer_name, r_primer] + map(str, raw_info(r_primer))
+            )
+    return output
+
+def raw_info(primer):
+    return [raw_tm(primer), raw_entropy(primer), 
+            raw_hairpin(primer), raw_gc(primer), 
+            raw_gc_clamp(primer), raw_run(primer), len(primer)]
 
 def visualise_tile(template, tile, f_r_lens):
     template = str(template)
@@ -97,7 +107,7 @@ def raw_hairpin(primer):
             num_match = new_num_match
     return num_match
 
-def raw_self_dimer(primer):
+def raw_dimer(seq1, seq2):
     length1 = len(seq1)
     length2 = len(seq2)
     total_length = len(seq1) + len(seq2)
@@ -105,9 +115,12 @@ def raw_self_dimer(primer):
     for i in range(1,total_length):
         top = seq1[-i:total_length -i]
         bottom = seq2[i- total_length: i]
-        new_score = num_complement(top,bottom)
+        new_score = weighted_num_complement(top,bottom)
         score = new_score if new_score > score else score
     return score
+
+def raw_self_dimer(primer):
+    return raw_dimer(primer,primer)
 
 def raw_gc(primer):
     primer = primer.upper()
@@ -125,14 +138,34 @@ def raw_run(primer):
     run =  max(len(list(group[1]))-1
                for group in itertools.groupby(primer.upper()))
     return run
+
+
+def k_entropy(seq):
+    """ Defined as the average sum of Shanon's entropy 
+    for all possible contigous k-mers.
+    RH = H(primer of length k) for all possible k of the input
+    """
+    result = 0
+    length = len(seq)
+    num_mers = 0
+    for l in range(2,length+1):
+        all_k_mers_with_len_l = k_mers(seq,l)
+        num_mers += len(all_k_mers_with_len_l)
+        result += sum(map(raw_entropy, all_k_mers_with_len_l))
+    result = result / (num_mers +1)
+    return result
+
+
+
+
 ############## Utils for scoring #######################
-def weighted_num_complement(seq1,seq2):
+def weighted_num_complement(seq1,seq2,gc_weight = 1.5):
     weighted_num_complement = 0
     for b1,b2 in zip(seq1,seq2):
         if is_complement(b1,b2):
             b1 = b1.upper()
             if b1 == 'G' or b1 == 'C':
-                weighted_num_complement +=1.5
+                weighted_num_complement += gc_weight
             else:
                 weighted_num_complement +=1
     return weighted_num_complement
@@ -145,6 +178,12 @@ def num_complement(seq1,seq2):
     return num_complement
 
 
+def k_mers(seq,k):
+    length = len(seq)
+    mers = []
+    for i in range(length - k +1):
+        mers.append(seq[i:i+k])
+    return mers
             
             
 
