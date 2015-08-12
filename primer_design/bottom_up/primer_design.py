@@ -182,12 +182,20 @@ def main():
 
     for chromo in bed_coords:
         for region_coord in bed_coords[chromo]:
+            before_time = time.time()
+
             coords = (chromo, region_coord[0], region_coord[1])
             searcher = DP_exon_search(user_inputs, coords, score_func)
             searcher.dp_search()
             print(searcher.pos_memo)
             searcher.pick_primer_set()
             searcher.write_output(outfile)
+
+            after_time = time.time()
+            time_taken = after_time - before_time
+            print("%s %s %s"%coords)
+            print("length %i"%searcher.exon_length)
+            print("Search-pick-write time: %s"%time_taken)
 
             # assemble aux_data
             tiles_chosen = searcher.aux_data['tiles']
@@ -227,16 +235,16 @@ class DP_exon_search(object):
         self.background = self._get_background()
 
         self.tiling_range = self.exon_length + 2 * (self.max_tile -1)
-        #self.background_length = len(self.background)
         self.allowed_overlap = user_inputs.allowed_overlap
         self.primer_length = user_inputs.primer_length
         self.primer_length_var = user_inputs.primer_length_var
         # initiallise both memos
-        #assert self.background_length == self.exon_length + 2 * (self.max_tile -1)
-        self.pos_memo = [ (0,0,0,None, None) for index in range(self.tiling_range)]
+        self.pos_memo = [(0,0,0,None, None) 
+                         for index in range(self.tiling_range)]
         self.primer_memo = {}
 
-        # chosen primer_set, non-empty only if pick_primer_set was successfully called
+        # chosen primer_set, 
+        # non-empty only if pick_primer_set was successfully called
         self.primer_set = []
 
         # initialise an auxiliary data record
@@ -262,12 +270,11 @@ class DP_exon_search(object):
         # the bottom up DP start at the first base of the exon
         # but ends PREMATURELY at the end of the exon + min_tile -1
         # so as to ensure that all tiles intersect with the region.
-        # Though we can allow tile go beyond that case is 
+        # Though we can allow tile go beyond, that case is 
         # handled in a separate for loop.
         # This separation should be handled with a separate private method
-        # (because i am repeating myself
+        # (because i am repeating myself in codes)
 
-        ##exon_end_pos = self.background_length - self.max_tile
         start_search = self.exon_start
         end_search = self.exon_end-1 + self.min_tile
         for pos in range(start_search, end_search):
@@ -302,24 +309,21 @@ class DP_exon_search(object):
                         best_r = r_primer
                         best_overlap = overlap
                         best_tile_size = t_size
-            self.pos_memo[pos - self.exon_start + self.max_tile -1] = (best_score, 
-                                                    best_tile_size, 
-                                                    best_overlap, 
-                                                    best_f, 
-                                                    best_r)
+            position_in_memo = pos - self.exon_start + self.max_tile -1
+            self.pos_memo[position_in_memo] = ( best_score, 
+                                                best_tile_size, 
+                                                best_overlap, 
+                                                best_f, 
+                                                best_r)
 
 
-        #print("The pos_memo[-self.max_tiles:] before going beyond exon")
-        #print(self.pos_memo[-self.max_tile:])
         # redefine start and end searching position to handle
         # the tiles that go beyong exon + min_tile -1
         start_search = end_search
         end_search = self.exon_end-1 + self.max_tile 
         # exon_end is bed file coord,
         # hence the actual exon_ending position is exon_end -1
-        c = 0
         for pos in range(start_search, end_search):
-            c +=1
             best_score = 0
             best_f = None
             best_r = None
@@ -343,15 +347,13 @@ class DP_exon_search(object):
                             best_r = r_primer
                             best_overlap = overlap
                             best_tile_size = t_size
-            print(c)
-            print(pos - self.exon_start + self.max_tile -1)
-            print(self.tiling_range)
-            self.pos_memo[pos-self.exon_start+self.max_tile -1] = (best_score, 
-                                                  best_tile_size, 
-                                                  best_overlap, 
-                                                  best_f, 
-                                                  best_r)
-        print("SEARCH ENDED")
+            position_in_memo = pos - self.exon_start + self.max_tile -1
+            self.pos_memo[position_in_memo] = (best_score, 
+                                              best_tile_size, 
+                                              best_overlap, 
+                                              best_f, 
+                                              best_r)
+        print("DP search ended")
 
     def best_primers_in_tile(self, tile):
         best_f = None
@@ -408,13 +410,10 @@ class DP_exon_search(object):
         at least 1 bp intersection. 
         """
         # there is a repeat in parsing user_inputs here, see __init__
-        #region_start = self.exon_start - self.max_tile + 1
-        #region_end = self.exon_end + self.max_tile -1
         seq_read = SeqIO.read('./fasta/%s.fa'%self.chrom, 'fasta')
         # This function is specific to the way we put our files
         # This should be generalised to handle other situations
         # for instance, the fasta files are with multiple chrom
-        #seq = seq_read.seq[region_start:region_end]
         return seq_read.seq
 
     def get_seq(self, primer_specification):
@@ -450,7 +449,8 @@ class DP_exon_search(object):
 
         position = best_reverse_start
         while abs(position) < region_size_remaining:
-            (pos_score, tile_size, overlap, f_primer, r_primer) = self.pos_memo[position]
+            (pos_score, tile_size, 
+             overlap, f_primer, r_primer) = self.pos_memo[position]
 
             self.primer_set.append(f_primer)
             self.primer_set.append(r_primer)
@@ -463,8 +463,7 @@ class DP_exon_search(object):
             position -= (tile_size - overlap)
             self.aux_data['tiles'].append(tile_size)
             self.aux_data['overlap'].append(overlap)
-            #print(position, tile_size, overlap, region_size_remaining)
-        print("PICK ENDED")
+        print("Finished picking primers based on pos memo and primer memo")
 
 
     def write_output(self, outfile):
@@ -487,7 +486,8 @@ class DP_exon_search(object):
             row_output = '\t'.join(output)+'\n'
             outfile.write(row_output)
         outfile.flush()
-        print("WRITE ENDED")
+        print("Finish writing primers of %s %s %s to file"
+                %(self.chrom, self.exon_start, self.exon_end))
 
 
 
@@ -514,17 +514,17 @@ class DP_exon_search(object):
         # to avoid recalculaton, the sequence is stored
         # as an attribute.
 
-    def get_sequence(self):
-        # return sequence
-        # or if self.sequence == None:
-        #    calculate
-        #    self.sequence == sequence
-        #    else:
-        #       return self.sequence?? hmm...
-        pass
-
-    def get_3prime(self):
-        pass
+#    def get_sequence(self):
+#        # return sequence
+#        # or if self.sequence == None:
+#        #    calculate
+#        #    self.sequence == sequence
+#        #    else:
+#        #       return self.sequence?? hmm...
+#        pass
+#
+#    def get_3prime(self):
+#        pass
 
 
 
