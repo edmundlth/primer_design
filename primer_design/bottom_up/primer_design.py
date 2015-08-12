@@ -185,7 +185,7 @@ def main():
             coords = (chromo, region_coord[0], region_coord[1])
             searcher = DP_exon_search(user_inputs, coords, score_func)
             searcher.dp_search()
-            print(searcher.pos_memo[-searcher.max_tile:])
+            print(searcher.pos_memo)
             searcher.pick_primer_set()
             searcher.write_output(outfile)
 
@@ -268,8 +268,8 @@ class DP_exon_search(object):
         # (because i am repeating myself
 
         ##exon_end_pos = self.background_length - self.max_tile
-        start_search = self.exon_start + self.max_tile
-        end_search = self.exon_end + self.min_tile -1
+        start_search = self.exon_start
+        end_search = self.exon_end-1 + self.min_tile
         for pos in range(start_search, end_search):
             best_score = 0
             best_f = None
@@ -282,7 +282,17 @@ class DP_exon_search(object):
                 tile_primer_pair = self.best_primers_in_tile(tile)
                 tile_score, f_primer, r_primer = tile_primer_pair
                 for overlap in range(self.allowed_overlap):
-                    prefix_pos = pos - self.exon_start - t_size + overlap
+                    # Access the score of the previous tiling in pos_memo
+                    # if this tile is chosen and take the best one, 
+                    # allowing for overlap of this and previous tile
+                    # To access previous pos:
+                    # 1) bring pos back to 0 if pos is at self.exon_start
+                    # 2) add self.max_tile -1 to go to current pos_memo entry
+                    # 3) shift back by t_size to get previous tiles score
+                    # 4) but allow for the overlaping.
+                    prefix_pos = pos - self.exon_start \
+                                 + self.max_tile -1 \
+                                  - t_size + overlap
                     prefix_score = self.pos_memo[prefix_pos][0]
                     total_score = prefix_score + tile_score
 
@@ -292,17 +302,24 @@ class DP_exon_search(object):
                         best_r = r_primer
                         best_overlap = overlap
                         best_tile_size = t_size
-            self.pos_memo[pos - self.exon_start] = (best_score, 
+            self.pos_memo[pos - self.exon_start + self.max_tile -1] = (best_score, 
                                                     best_tile_size, 
                                                     best_overlap, 
                                                     best_f, 
                                                     best_r)
 
+
+        #print("The pos_memo[-self.max_tiles:] before going beyond exon")
+        #print(self.pos_memo[-self.max_tile:])
         # redefine start and end searching position to handle
         # the tiles that go beyong exon + min_tile -1
         start_search = end_search
-        end_search = self.exon_end + self.max_tile -1
+        end_search = self.exon_end-1 + self.max_tile 
+        # exon_end is bed file coord,
+        # hence the actual exon_ending position is exon_end -1
+        c = 0
         for pos in range(start_search, end_search):
+            c +=1
             best_score = 0
             best_f = None
             best_r = None
@@ -314,7 +331,9 @@ class DP_exon_search(object):
                     tile_primer_pair = self.best_primers_in_tile(tile)
                     tile_score, f_primer, r_primer = tile_primer_pair
                     for overlap in range(self.allowed_overlap):
-                        prefix_pos = pos - self.exon_start - t_size + overlap
+                        prefix_pos = pos - self.exon_start \
+                                     + self.max_tile -1 \
+                                      - t_size + overlap
                         prefix_score = self.pos_memo[prefix_pos][0]
                         total_score = prefix_score + tile_score
 
@@ -324,7 +343,10 @@ class DP_exon_search(object):
                             best_r = r_primer
                             best_overlap = overlap
                             best_tile_size = t_size
-            self.pos_memo[pos-self.exon_start] = (best_score, 
+            print(c)
+            print(pos - self.exon_start + self.max_tile -1)
+            print(self.tiling_range)
+            self.pos_memo[pos-self.exon_start+self.max_tile -1] = (best_score, 
                                                   best_tile_size, 
                                                   best_overlap, 
                                                   best_f, 
@@ -473,17 +495,17 @@ class DP_exon_search(object):
 
 
 
-class Primer(object):
-    def __init__(self, chrom, start, end, direction):
-        assert direction == 'f' or direction == 'r'
-        self.chrom = chrom
-        self.direction = direction
-        self.start_pos = start
-        self.end_pos = end
-        self.length = end - start
-        self.raw_scores = None
-        self.scores = None
-        self.total_score = None
+#class Primer(object):
+#    def __init__(self, chrom, start, end, direction):
+#        assert direction == 'f' or direction == 'r'
+#         self.chrom = chrom
+#         self.direction = direction
+#         self.start_pos = start
+#         self.end_pos = end
+#         self.length = end - start
+#         self.raw_scores = None
+#         self.scores = None
+#         self.total_score = None
         # self.sequence = None
         # a decision to make here
         # to avoid storing the sequence we can 
