@@ -1,6 +1,6 @@
 from utils import stability, weighted_num_complement
-
-
+from Bio.SeqUtils.MeltingTemp import Tm_NN, Tm_GC, Tm_Wallace
+from math import log
 
 
 class Score(object):
@@ -18,6 +18,8 @@ class Score(object):
         self.sense_heel = None
         self.antisense_heel = None
         self.gc_weight = None
+        self.dnac1 = None
+        self.dnac2 = None
         self._handle_user_inputs(user_inputs)
 
 
@@ -27,16 +29,11 @@ class Score(object):
         self.sense_heel = user_inputs.sense_heel.upper()
         self.antisense_heel = user_inputs.antisense_heel.upper()
 
-        self.Na, 
-        self.Mg, 
-        self.K,
-        self.dNTPs,
-        self.Tris,
-        self.dnac1,
-        self.dnac2 = user_inputs.conc
+        (self.Na, self.Mg, self.K,self.dNTPs,
+         self.Tris,self.dnac1,self.dnac2) = user_inputs.conc
 
         self.saltcorr = user_inputs.saltcorr
-        self.gc_weight = user_inputs.gc_weight)
+        self.gc_weight = user_inputs.gc_weight
 
         score_choice = user_inputs.score_func
         if score_choice == 'score_Lp':
@@ -76,8 +73,8 @@ class Score(object):
     
     def raw_entropy(self, seq):
         seq = seq.upper()
-        length = float(len(primer))
-        prob = [primer.count(base)/length for base in set(primer)]
+        length = float(len(seq))
+        prob = [seq.count(base)/length for base in set(seq)]
         return - sum( p * log(p) for p in prob)
 
     def raw_max_hairpin(self, seq, direction):
@@ -88,13 +85,14 @@ class Score(object):
         else:
             print('Warning: primer_direction not specified for hairpin prediction')
             raise ValueError
+        length = len(seq)
         score = 0
         for i in range(5,length):
             # only consider loop of size 3
             # and case where top and bottom with
             # only 1 bp is not considered
             top = seq[:i-3][::-1]
-            bottom = primer[i:]
+            bottom = seq[i:]
             new_score = weighted_num_complement(top,bottom,
                                                 gc_weight = self.gc_weight)
             # Stability function isn't written,
@@ -108,7 +106,7 @@ class Score(object):
     def raw_gc(self, seq):
         seq = seq.upper()
         gc_count = seq.count('G') + seq.count('C')
-        return count/float(len(seq))
+        return gc_count/float(len(seq))
 
     def raw_gc_clamp(self,seq):
         end_with = seq[-1].upper()
@@ -119,7 +117,7 @@ class Score(object):
 
     def raw_run(self, seq):
         seq = seq.upper()
-        max_run = 0
+        max_run = 1
         run = 1
         current_base = seq[0]
         for base in seq[1:]:
@@ -130,6 +128,8 @@ class Score(object):
                 if run > max_run:
                     max_run = run
                 run = 1
+        if run > max_run:
+            max_run = run
         return max_run
 
     def normalise_tm(self, tm):
@@ -140,7 +140,7 @@ class Score(object):
         range = (upper - target) - (lower - target)
         normalised = tm_difference / range
         if normalised < 0:
-            return 100*(1 + self.tm_underachive_weight * normalised)
+            return 100*(1 + self.tm_underachieve_weight * normalised)
         elif normalised > 0:
             return 100 * (1 -  normalised)
         else:
@@ -160,7 +160,7 @@ class Score(object):
         # maximum_hairpin = AT is counted as 1 while GC are 
         # weighted according to user specifed gc weight
         maximum_hairpin = length * ( gc_fraction * self.gc_weight + 
-                                        (1 - gc))
+                                        (1 - gc_fraction))
         return 100 * (1 - hairpin / maximum_hairpin)
 
     def normalise_gc_clamp(self, gc_clamp):
@@ -170,7 +170,7 @@ class Score(object):
             return 0
 
     def score_Lp(self, seq, direction, p = 2):
-        p == float(p)
+        p = float(p)
         length = len(seq)
         tm = self.raw_tm(seq)
         entropy = self.raw_entropy(seq)

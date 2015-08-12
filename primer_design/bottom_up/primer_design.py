@@ -15,18 +15,20 @@ Commandline arguments (user input):
          * DMSO not added yet
     - saltcorr 
     - GCweight
+    - outfile
     - Auxilarry output file for tile_size distributions and other data
 
 """
 from argparse import ArgumentParser
 import logging
+import sys
 import score
 from Bio import SeqIO
 import time
 from utils import handle_bedfile, rev_complement
 ###############################################################################
 
-DEFAULT_LOG_FILE =' primer_design.log'
+DEFAULT_LOG_FILE ='primer_design.log'
 def parse_args():
     'Parse command line arguments for the program'
     parser = ArgumentParser(description = 'Hiplex primer design tool')
@@ -37,6 +39,10 @@ def parse_args():
                         required=True, 
                         help = ''' A BED file specifying all the coordinates
                         of the regions of interest ''')
+    parser.add_argument('--outfile', metavar = "OUTPUT_FILE", type = str,
+                        default = 'primer_out.txt',
+                        help = ''' A string specifying the name of the output
+                        file''')
     parser.add_argument('--sense_heel', metavar = 'SENSE_HEEL', type = str,
                         required=True,
                         help = '''A string of nucleic acid specifying the 
@@ -53,7 +59,7 @@ def parse_args():
                         default = 20, 
                         help = '''An integer specifying the optimal primer length
                         Defaulted to 20''')
-    parser.add_argument('--primer_length_var', metavar = 'PRIMER_LENGTH_VARIATION",
+    parser.add_argument('--primer_length_var', metavar = 'PRIMER_LENGTH_VARIATION',
                         type = int, default = 8,
                         help = '''An integer specifying the amount of variation 
                         from the optimal primer length. 
@@ -65,7 +71,7 @@ def parse_args():
                         help = '''An integer specifying the allowed overlaping 
                         between successive tiles.
                         Defaulted to 5''')
-    parser.add_argument('--score_func', metarvar = "SCORING_FUNCTION",
+    parser.add_argument('--score_func', metavar = "SCORING_FUNCTION",
                         type = str, default = 'score_Lp', 
                         help = ''' A string specifying the name of the
                         scoring function to be used.
@@ -83,7 +89,7 @@ def parse_args():
                            Tm_GC  (Prediction using GC content of sequence)
                            Tm_Wallace (Wallace's 2-4 rule)
                            ''')
-    parser.add_argument('--target_tm', metarvar="TARGET_TM", type = float,
+    parser.add_argument('--target_tm', metavar="TARGET_TM", type = float,
                         default = 64.0, 
                         help = '''A floating point number specifying the 
                         target melting point of the reaction mixture
@@ -151,23 +157,50 @@ def start_log(log):
 
 def main():
     user_inputs = parse_args()
+    print('These are your inputs:')
+    print(user_inputs)
     start_log(user_inputs.log)
-    scoring = Score(user_inputs)
+    scoring = score.Score(user_inputs)
     score_func = scoring.score_func
-    # handle scoring here
-    bed_coords = handle_bedfile(args.bed)
-    min_tile, max_tile = ags.tiles
-    outfile = open(args.outfile, 'w')
-    auxiliary_data = {} 
+
+
+    # file handling
+    bed_coords = handle_bedfile(user_inputs.bed)
+    outfile_header = ['name', 'start', 'end', 'sequence', 'length',
+                      'tm', 'entropy', 'hairpin', 'gc', 'gc_clamp', 'run']
+    aux_outfile_header = ['tiles', 'overlap']
+    outfile = open(user_inputs.outfile, 'w')
+    outfile.write('\t'.join(outfile_header) + '\n')
+    aux_outfile = open(user_inputs.auxfile,'w')
+    aux_outfile.write('\t'.join(aux_outfile_header) + '\n')
+
+
     # collect all aux data from each exon search
     # a post process statistics is then done on it.
+    auxiliary_data = [[],[]] # lists for tiles and overlap 
+
+
     for chromo in bed_coords:
         for region_coord in bed_coords[chromo]:
             coords = (chromo, region_coord[0], region_coord[1])
             searcher = DP_exon_search(user_inputs, coords, score_func)
             searcher.dp_search()
+            print(searcher.pos_memo[-searcher.max_tile:])
             searcher.pick_primer_set()
-            searcher.write_output()
+            searcher.write_output(outfile)
+
+            # assemble aux_data
+            tiles_chosen = searcher.aux_data['tiles']
+            overlaps = searcher.aux_data['overlap']
+            auxiliary_data[0].extend(tiles_chosen)
+            auxiliary_data[1].extend(overlaps)
+
+    for tile, overlap in zip(auxiliary_data[0],auxiliary_data[1]):
+        output = map(str, [tile, overlap])
+        aux_outfile.write('\t'.join(output) + '\n')
+
+    outfile.close()
+    aux_outfile.close()
 
 
 
@@ -186,24 +219,28 @@ class DP_exon_search(object):
         self.score_primer = score_func
 
         self.min_tile, self.max_tile = user_inputs.tiles
-        self.tiles = [min_tile + extend for extend in range(max_tile - min_tile + 1)]
+        self.tile_sizes = [self.min_tile + extend 
+                      for extend in range(self.max_tile - self.min_tile + 1)]
         self.chrom, self.exon_start, self.exon_end = exon_coords
         self.exon_length = self.exon_end - self.exon_start
-        self.background = self._get_background(exon_coords, max_tile)
-        self.background_length = len(self.background)
+
+        self.background = self._get_background()
+
+        self.tiling_range = self.exon_length + 2 * (self.max_tile -1)
+        #self.background_length = len(self.background)
         self.allowed_overlap = user_inputs.allowed_overlap
         self.primer_length = user_inputs.primer_length
         self.primer_length_var = user_inputs.primer_length_var
         # initiallise both memos
-        assert self.background_length = self.exon_length + 2 * (max_tile -1)
-        self.pos_memo = [ (0,0,None, None) for index in range(self.background_length)]
+        #assert self.background_length == self.exon_length + 2 * (self.max_tile -1)
+        self.pos_memo = [ (0,0,0,None, None) for index in range(self.tiling_range)]
         self.primer_memo = {}
 
         # chosen primer_set, non-empty only if pick_primer_set was successfully called
         self.primer_set = []
 
         # initialise an auxiliary data record
-        self.aux_data = {}
+        self.aux_data = {'tiles':[],'overlap':[]}
 
 
 
@@ -230,9 +267,9 @@ class DP_exon_search(object):
         # This separation should be handled with a separate private method
         # (because i am repeating myself
 
-        exon_end_pos = self.background_length - max_tile
-        start_search = self.max_tile - 1
-        end_search = exon_end_pos + min_tile
+        ##exon_end_pos = self.background_length - self.max_tile
+        start_search = self.exon_start + self.max_tile
+        end_search = self.exon_end + self.min_tile -1
         for pos in range(start_search, end_search):
             best_score = 0
             best_f = None
@@ -245,9 +282,9 @@ class DP_exon_search(object):
                 tile_primer_pair = self.best_primers_in_tile(tile)
                 tile_score, f_primer, r_primer = tile_primer_pair
                 for overlap in range(self.allowed_overlap):
-                    prefix_pos = pos - t_size + overlap
+                    prefix_pos = pos - self.exon_start - t_size + overlap
                     prefix_score = self.pos_memo[prefix_pos][0]
-                    total_score = prefic_score + suffix_score
+                    total_score = prefix_score + tile_score
 
                     if total_score > best_score:
                         best_score = total_score
@@ -255,12 +292,16 @@ class DP_exon_search(object):
                         best_r = r_primer
                         best_overlap = overlap
                         best_tile_size = t_size
-            self.pos_memo[pos] = (best_score, best_tile_size, best_overlap, best_f, best_r)
+            self.pos_memo[pos - self.exon_start] = (best_score, 
+                                                    best_tile_size, 
+                                                    best_overlap, 
+                                                    best_f, 
+                                                    best_r)
 
         # redefine start and end searching position to handle
         # the tiles that go beyong exon + min_tile -1
         start_search = end_search
-        end_search = self.background_length
+        end_search = self.exon_end + self.max_tile -1
         for pos in range(start_search, end_search):
             best_score = 0
             best_f = None
@@ -268,14 +309,14 @@ class DP_exon_search(object):
             best_overlap = 0
             best_tile_size = None
             for t_size in self.tile_sizes:
-                if pos - t_size < exon_end_pos: # if tile still overlap
+                if pos - t_size < self.exon_end: # if tile still overlap
                     tile = (pos - t_size +1, t_size)
                     tile_primer_pair = self.best_primers_in_tile(tile)
                     tile_score, f_primer, r_primer = tile_primer_pair
                     for overlap in range(self.allowed_overlap):
-                        prefix_pos = pos - t_size + overlap
+                        prefix_pos = pos - self.exon_start - t_size + overlap
                         prefix_score = self.pos_memo[prefix_pos][0]
-                        total_score = prefix_score + suffix_score
+                        total_score = prefix_score + tile_score
 
                         if total_score > best_score:
                             best_score  = total_score
@@ -283,7 +324,12 @@ class DP_exon_search(object):
                             best_r = r_primer
                             best_overlap = overlap
                             best_tile_size = t_size
-            self.pos_memo[pos] = (best_score, best_tile_size, best_overlap, best_f, best_r)
+            self.pos_memo[pos-self.exon_start] = (best_score, 
+                                                  best_tile_size, 
+                                                  best_overlap, 
+                                                  best_f, 
+                                                  best_r)
+        print("SEARCH ENDED")
 
     def best_primers_in_tile(self, tile):
         best_f = None
@@ -291,9 +337,10 @@ class DP_exon_search(object):
         best_f_score = 0
         best_r_score = 0
         tile_start, t_size = tile
-        tile_end = tile_start + tile_size -1
+        tile_end = tile_start + t_size -1
         var = self.primer_length_var
         primer_length = self.primer_length
+
 
         for vary in range(-var, var +1):
             this_primer_length = primer_length + vary
@@ -302,7 +349,7 @@ class DP_exon_search(object):
             if f_primer in self.primer_memo:
                 f_scores = self.primer_memo[f_primer]
             else:
-                f_sequence = background[tile_start - this_primer_length: tile_start]
+                f_sequence = self.get_seq(f_primer)
                 f_scores = self.score_primer(f_sequence, direction = 'f')
                 self.primer_memo[f_primer] = f_scores
 
@@ -311,7 +358,7 @@ class DP_exon_search(object):
             if r_primer in self.primer_memo:
                 r_scores = self.primer_memo[r_primer]
             else:
-                r_sequence = background[tile_end +1 : tile_end + this_primer_length +1]
+                r_sequence = self.get_seq(r_primer)
                 r_scores = self.score_primer(r_sequence, direction = 'r')
                 self.primer_memo[r_primer] = r_scores
 
@@ -327,7 +374,7 @@ class DP_exon_search(object):
         return (total_score, f_primer, r_primer)
 
 
-    def _get_background(self, exon_coords, max_tile):
+    def _get_background(self):
         """
         This is a private method used when initialising the class.
         (see __init__) It takes in exon_coords of concern and
@@ -339,15 +386,14 @@ class DP_exon_search(object):
         at least 1 bp intersection. 
         """
         # there is a repeat in parsing user_inputs here, see __init__
-        chrom, start, end = exon_coords
-        region_start = start - max_tile +1
-        region _end = end + max_tile -1
-        seq_read = SeqIO.read('/fasta/%s.fa'%chrom, 'fasta')
+        #region_start = self.exon_start - self.max_tile + 1
+        #region_end = self.exon_end + self.max_tile -1
+        seq_read = SeqIO.read('./fasta/%s.fa'%self.chrom, 'fasta')
         # This function is specific to the way we put our files
         # This should be generalised to handle other situations
         # for instance, the fasta files are with multiple chrom
-        seq = seq_read.seq[region_start:region_end]
-        return seq
+        #seq = seq_read.seq[region_start:region_end]
+        return seq_read.seq
 
     def get_seq(self, primer_specification):
         three_prime_pos, length, dir = primer_specification
@@ -368,10 +414,11 @@ class DP_exon_search(object):
         
         best_reverse_start = None
         best_start_score = 0
-        for pos in range(-1, -self.max_tile,-1):
-            pos_info = pos_memo[pos]
+        for pos in range(-1, -self.max_tile -1,-1):
+            pos_info = self.pos_memo[pos]
             pos_score = pos_info[0]
             if pos_score > best_start_score:
+                print(best_start_score)
                 best_start_score = pos_score
                 best_reverse_start = pos
         region_size_remaining = self.exon_length \
@@ -381,32 +428,44 @@ class DP_exon_search(object):
 
         position = best_reverse_start
         while abs(position) < region_size_remaining:
-            pos_score, 
-            tile_size, 
-            overlap, 
-            f_primer, r_primer = self.pos_memo[position]
+            (pos_score, tile_size, overlap, f_primer, r_primer) = self.pos_memo[position]
 
             self.primer_set.append(f_primer)
             self.primer_set.append(r_primer)
 
+            # Beware of tile_size, overlap = 0 case, an infinite loop result
+            if tile_size == 0 and overlap == 0:
+                print("There is error and this will go into an infinite loop")
+                return
+
             position -= (tile_size - overlap)
-        return primer_set
+            self.aux_data['tiles'].append(tile_size)
+            self.aux_data['overlap'].append(overlap)
+            #print(position, tile_size, overlap, region_size_remaining)
+        print("PICK ENDED")
 
 
     def write_output(self, outfile):
-        for primer in primer_set:
+        for primer in self.primer_set:
             three_prime_pos, length, direction = primer
-            five_primer_pos = three_primer_pos + length -1
+            
+            # produce bed file format coordinates for primer name
+            position_shift = self.exon_start - self.max_tile +1
+            start = three_prime_pos - length +1 + position_shift
+            end = three_prime_pos +1 + position_shift
             primer_seq = self.get_seq(primer)
-            score_data = list(self.primer_memo[primer])
+            score_data = map(str,self.primer_memo[primer])
             primer_name = self.chrom + '_' \
-                          + str(three_prime_pos) + '_' \
-                          + str(five_primer_pos) + '_' \
+                          + str(start) + '_' \
+                          + str(end) + '_' \
+                          + direction + str(self.primer_set.index(primer) +1) 
 
-            output = [primer_name, primer_seq] + score_data
+            output = map(str,[primer_name, start, end,
+                      primer_seq, length]) + score_data
             row_output = '\t'.join(output)+'\n'
             outfile.write(row_output)
         outfile.flush()
+        print("WRITE ENDED")
 
 
 

@@ -221,7 +221,8 @@ def handle_bedfile(bedfile):
     file = open(bedfile)
     bed_dictionary = {}
     for line in file:
-        chromo, start, end = line.strip().split('\t')
+        chromo, start, end = line.strip().split('\t')[:3]
+        start, end = map(int, [start, end])
         if chromo in bed_dictionary:
             bed_dictionary[chromo].append(  (start, end)  )
         else:
@@ -241,12 +242,3 @@ def rev_complement(seq):
 
 
 
-seq2, shift = sys.argv[1:]
-shift = int(shift)
-
-if __name__ == '__main__':
-    print(raw_max_hairpin(seq1))
-    print(stability(seq1,seq2,shift = shift))
-    #for i in range(100):
-    #    stability(seq1,seq2, shift = shift)
-    #print(stability(seq1,seq2,shift=shift))
