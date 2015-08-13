@@ -25,7 +25,7 @@ import sys
 import score
 from Bio import SeqIO
 import time
-from utils import handle_bedfile, rev_complement
+from utils import handle_bedfile, rev_complement, write_aux
 ###############################################################################
 
 DEFAULT_LOG_FILE ='primer_design.log'
@@ -159,10 +159,11 @@ def main():
     user_inputs = parse_args()
     print('These are your inputs:')
     print(user_inputs)
+    
     start_log(user_inputs.log)
+    
     scoring = score.Score(user_inputs)
     score_func = scoring.score_func
-
 
     # file handling
     bed_coords = handle_bedfile(user_inputs.bed)
@@ -171,9 +172,6 @@ def main():
     aux_outfile_header = ['tiles', 'overlap']
     outfile = open(user_inputs.outfile, 'w')
     outfile.write('\t'.join(outfile_header) + '\n')
-    aux_outfile = open(user_inputs.auxfile,'w')
-    aux_outfile.write('\t'.join(aux_outfile_header) + '\n')
-
 
     # collect all aux data from each exon search
     # a post process statistics is then done on it.
@@ -200,17 +198,13 @@ def main():
             # assemble aux_data
             auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
                                     list(searcher.aux_data['overlap']),
-                                    searcher.exon_length, time_taken]
+                                    searcher.exon_length, time_taken,
+                                    len(searcher.primer_memo)]
             tiles_chosen = searcher.aux_data['tiles']
             overlaps = searcher.aux_data['overlap']
 
-    for tile, overlap in zip(auxiliary_data[0],auxiliary_data[1]):
-        output = map(str, [tile, overlap])
-        aux_outfile.write('\t'.join(output) + '\n')
-
+    write_aux(auxiliary_data, user_inputs.auxfile)
     outfile.close()
-    aux_outfile.close()
-
 
 
 class DP_exon_search(object):
@@ -440,7 +434,6 @@ class DP_exon_search(object):
             pos_info = self.pos_memo[pos]
             pos_score = pos_info[0]
             if pos_score > best_start_score:
-                print(best_start_score)
                 best_start_score = pos_score
                 best_reverse_start = pos
         region_size_remaining = self.exon_length \

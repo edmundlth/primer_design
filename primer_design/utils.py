@@ -236,7 +236,27 @@ def rev_complement(seq):
     seq = seq.upper()
     return ''.join(complement[base] for base in seq)[::-1]
 
+def mean(sequence):
+    return sum(sequence)/float(len(sequence))
 
+def variance(sequence):
+    return sum([x**2 for x in sequence])/ float(len(sequence))
+
+def write_aux(data_dic, auxfile_name):
+    auxfile = open(auxfile_name, 'w')
+    header = ['chrom', 'start', 'end', 'length', 'time_taken',
+              'mean_tile', 'num_tile','var_tile', 'mean_overlap',
+              'num_primers_scored']
+    for coords, data in data_dic.values():
+        chrom, start, end = coords
+        tiles, overlap, length, time_taken, num_primers = data
+        output = map(str,
+                        [chrom, start, end, length, time_taken,
+                        mean(tiles), len(tiles), variance(tiles),
+                        mean(overlap), num_primers]
+                    )
+        auxfile.write('\t'.join(output) + '\n')
+    auxfile.close()
 
 
 
