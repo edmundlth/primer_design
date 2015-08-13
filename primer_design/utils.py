@@ -247,7 +247,8 @@ def write_aux(data_dic, auxfile_name):
     header = ['chrom', 'start', 'end', 'length', 'time_taken',
               'mean_tile', 'num_tile','var_tile', 'mean_overlap',
               'num_primers_scored']
-    for coords, data in data_dic.values():
+    auxfile.write('\t'.join(header) + '\n')
+    for coords, data in data_dic.items():
         chrom, start, end = coords
         tiles, overlap, length, time_taken, num_primers = data
         output = map(str,

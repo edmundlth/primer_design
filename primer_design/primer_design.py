@@ -185,7 +185,7 @@ def main():
             coords = (chromo, region_coord[0], region_coord[1])
             searcher = DP_exon_search(user_inputs, coords, score_func)
             searcher.dp_search()
-            print(searcher.pos_memo)
+            #print(searcher.pos_memo)
             searcher.pick_primer_set()
             searcher.write_output(outfile)
 
@@ -193,7 +193,7 @@ def main():
             time_taken = after_time - before_time
             print("%s %s %s"%coords)
             print("length %i"%searcher.exon_length)
-            print("Search-pick-write time: %s"%time_taken)
+            print("Search-pick-write time: %s\n"%time_taken)
 
             # assemble aux_data
             auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
