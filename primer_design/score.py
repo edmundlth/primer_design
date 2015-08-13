@@ -88,15 +88,13 @@ class Score(object):
         score = 0
         for i in range(5,length):
             # only consider loop of size 3
+            # smaller loop are assummed to be sterically impossible
             # and case where top and bottom with
             # only 1 bp is not considered
             top = seq[:i-3][::-1]
             bottom = seq[i:]
             new_score = weighted_num_complement(top,bottom,
                                                 gc_weight = self.gc_weight)
-            # Stability function isn't written,
-            # the raw stability have to be processed, 
-            # eg.Need normalisation
             if new_score > score:
                 score = new_score
         return score

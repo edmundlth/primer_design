@@ -1,4 +1,125 @@
 """
+                Primer design        
+Author: Edmund, Bernie, Daniel, Tu
+Email: elau1@student.unimelb.edu.au
+
+One line description:
+    This program design primers for HiPlex PCR reaction
+
+Description:
+    This program takes a set of DNA coordinates specifying the regions in
+    the DNA that is to be amplified, a list command line arguments (see below)
+    specifying various parameters and output a set of primers that will
+    amplify those regions in a multiplex PCR reaction.
+
+    The DNA coordinates are specified in BED files format which should
+    be in the working directory. A reference genome contained in a 
+    directory called fasta containing the sequence of each chromosome
+    in separate fasta files has to be provided in the working directory.
+
+    The outputs will be recored into 3 tsv files: (using default names)
+    - primer_out.txt - recording primer names, sequence, length and 
+                       scores with various raw data about the primer
+    - primer_design.log - logging information containing the 
+                          commandline inputs
+    - auxiliary_primer_out.txt - contain auxiliary informations
+                                 about the search process including
+                                 run time, tiles size mean, variance,
+                                 overlap mean, variance
+    
+
+    This program uses bottom up dynamic programming (see description below)
+    to sift through the search space of all possible primer set 
+    which will completely tile all regions specified. We allow tiles 
+    to overlap and primers to vary in length up to the corresponding
+    user specified constrains.
+
+
+Conventions:
+    - Indexing are 0-based (similar to BED format and python string)
+    - output files are tab separated (.tsv) 
+    - Variable names ending with 's' implies a list or tuples of objects
+
+
+Definitions:
+    coords :: (String, Int, Int)
+    - (chromosome, start pos, end pos) 0-based index
+    - eg. ('chr1', 50, 100) is the downstream sequence at chromosome 1
+      with 0 based index 50,51,52,....,99
+
+    background :: String or Bio.Seq object
+    - The background sequence in which out region of interest or
+      primers are embedded in.
+    - In this program, it's the whole chromosome.
+
+    region :: (Int, Int)    # synonymous with exon
+    - (start pos, end pos) 0-based index
+    - this is part of the background which is intended to be amplified
+
+    primer :: (Int, Int, String)
+    - (3' position, length, direction)
+    - only applicable in the context where the background is known
+    - 0-based indexing.
+    - eg. (50,5, 'f') is the forward primer found by taking 
+      the sequence with 0-based index 
+                   46,47,48,49,50
+      (50, 5, 'r') is the reverse primer found by taking
+      the sequence with 0-based index
+                   50,51,52,53,54
+
+    primer_set :: [primer]
+    - a set of primers which, hopefully, tile the entire region
+
+    seq or sequence :: String
+    - the actual sequence of nucleic acid alphabets 
+
+    tile :: (Int, Int)
+    - (Start pos, length), 0-based index relative to background
+    - eg. (10, 5) is the tile starting at 10 with length 5, ie
+      it cover the segment with index 10,11,12,13,14
+    - associated with a tile is the forward and revserse primers
+      (f_primer and r_primer) which, in a PCR reaction will
+      ideally amplify the tile.
+    - note: max_tile and min_tile aren't exactly tiles, they
+            are integers representing tile size
+
+    overlap :: Int
+    - The amount intersection (shared positions) between 2 
+      adjacent tiles.
+    - eg. The tiles (10,5) and (13,4) has overlap=2
+
+
+    user_inputs :: argparse.Namespace object
+    - a record of all user commandline inputs
+
+
+
+Brief Description of the Bottom Up Dynamic Programming:
+    Pseudocode:
+
+    memo = some recording data structure
+
+    for each possible position:
+        for each possible tile choice at this position:
+            score of this pos = score of this choice + 
+                                   score all previous choices
+                                   compatible to this choice
+                                   (this is the entry of memo
+                                   at position - tile size)
+
+        record best score in the memo along with the choices
+        made which enable a post-process to back-trace 
+        the optimum choices
+
+    # not considering primer length variation and overlaps yet
+    # see comments in code body for adaptation
+    # now that the memo is prepared
+    search through memo:
+       the best scored final position will be our solution
+
+
+
+
 Commandline arguments (user input):
     - BED file
     - fasta choice?
@@ -22,10 +143,11 @@ Commandline arguments (user input):
 from argparse import ArgumentParser
 import logging
 import sys
-import score
-from Bio import SeqIO
 import time
+
+from Bio import SeqIO
 from utils import handle_bedfile, rev_complement, write_aux
+from score import Score
 ###############################################################################
 
 DEFAULT_LOG_FILE ='primer_design.log'
@@ -156,31 +278,39 @@ def start_log(log):
 
 
 def main():
+    #parse commandline inputs
     user_inputs = parse_args()
     print('These are your inputs:')
     print(user_inputs)
     
     start_log(user_inputs.log)
     
-    scoring = score.Score(user_inputs)
-    score_func = scoring.score_func
+    scoring = Score(user_inputs) # handle the user input regarding scoring
+    score_func = scoring.score_func # the score function that will be used
 
-    # file handling
-    bed_coords = handle_bedfile(user_inputs.bed)
+    # parse bed file and return a dictionary of {chrom: [(start, end), (start, end)]}
+    bed_coords = handle_bedfile(user_inputs.bed) 
+
+    # write output file header
     outfile_header = ['name', 'start', 'end', 'sequence', 'length',
                       'tm', 'entropy', 'hairpin', 'gc', 'gc_clamp', 'run']
     aux_outfile_header = ['tiles', 'overlap']
     outfile = open(user_inputs.outfile, 'w')
     outfile.write('\t'.join(outfile_header) + '\n')
 
-    # collect all aux data from each exon search
+    # initialise a auxiliary data dictionary that will collect data
+    # from each run which will be written into an auxiliary file
     # a post process statistics is then done on it.
-    auxiliary_data = {} # lists for tiles and overlap 
+    auxiliary_data = {}
 
 
+    # Now we loop through all specified regions,
+    # search for optimal primer set (prepare the memos),
+    # pick the optimal primer set,
+    # write primers and their datas to output files
     for chromo in bed_coords:
         for region_coord in bed_coords[chromo]:
-            before_time = time.time()
+            before_time = time.time() # time each run
 
             coords = (chromo, region_coord[0], region_coord[1])
             searcher = DP_exon_search(user_inputs, coords, score_func)
@@ -200,9 +330,9 @@ def main():
                                     list(searcher.aux_data['overlap']),
                                     searcher.exon_length, time_taken,
                                     len(searcher.primer_memo)]
-            tiles_chosen = searcher.aux_data['tiles']
-            overlaps = searcher.aux_data['overlap']
 
+    # The primer design process is now completed
+    # write auxiliary data into auxfile
     write_aux(auxiliary_data, user_inputs.auxfile)
     outfile.close()
 
@@ -229,10 +359,14 @@ class DP_exon_search(object):
 
         self.background = self._get_background()
 
+        # tiling_range is the maximum number of bases that will be 
+        # covered by any tiling pattern
+        # this will be the number of postion needed to be memoized
         self.tiling_range = self.exon_length + 2 * (self.max_tile -1)
         self.allowed_overlap = user_inputs.allowed_overlap
         self.primer_length = user_inputs.primer_length
         self.primer_length_var = user_inputs.primer_length_var
+
         # initiallise both memos
         self.pos_memo = [(0,0,0,None, None) 
                          for index in range(self.tiling_range)]
@@ -263,15 +397,19 @@ class DP_exon_search(object):
         """
 
         # the bottom up DP start at the first base of the exon
-        # but ends PREMATURELY at the end of the exon + min_tile -1
-        # so as to ensure that all tiles intersect with the region.
+        # since legal tile must intersect at least 1 base
+        # but ends PREMATURELY at the end of the exon + min_tile
+        # so as to ensure that all tiles intersect with the region
         # Though we can allow tile go beyond, that case is 
-        # handled in a separate for loop.
+        # handled in a separate for loop 
+        # since for each position, an extra check has to be in place
+        # to ensure the tile still intersect the region
         # This separation should be handled with a separate private method
         # (because i am repeating myself in codes)
 
         start_search = self.exon_start
         end_search = self.exon_end-1 + self.min_tile
+        # notice 0 based indexing for the end of exon is self.exon_end -1
         for pos in range(start_search, end_search):
             best_score = 0
             best_f = None
@@ -281,6 +419,8 @@ class DP_exon_search(object):
             for t_size in self.tile_sizes:
                 # a tile is defined as (start pos, tile size)
                 tile = (pos - t_size +1, t_size)
+                # select the best primer with respect to primer length
+                # and return the sum of their scores and primers themselves.
                 tile_primer_pair = self.best_primers_in_tile(tile)
                 tile_score, f_primer, r_primer = tile_primer_pair
                 for overlap in range(self.allowed_overlap):
@@ -316,7 +456,7 @@ class DP_exon_search(object):
         # the tiles that go beyong exon + min_tile -1
         start_search = end_search
         end_search = self.exon_end-1 + self.max_tile 
-        # exon_end is bed file coord,
+        # exon_end is bed file coord, ie 0-based
         # hence the actual exon_ending position is exon_end -1
         for pos in range(start_search, end_search):
             best_score = 0
@@ -351,6 +491,11 @@ class DP_exon_search(object):
         print("DP search ended")
 
     def best_primers_in_tile(self, tile):
+        '''
+        Take a tile in the background region and look for the best
+        forward and reverse primers (best with respect to their length)
+
+        '''
         best_f = None
         best_r = None
         best_f_score = 0
@@ -396,15 +541,9 @@ class DP_exon_search(object):
     def _get_background(self):
         """
         This is a private method used when initialising the class.
-        (see __init__) It takes in exon_coords of concern and
-        the maximum tile size available and return the relevant region
-        (called background)in the reference genome as a Bio.Seq object
-            background = overhang + exon + overhang
-                where overhang is the flanking sequence of size = max_tile-1
-        The overhang allow the tiles to go beyond the exon but has
-        at least 1 bp intersection. 
+        (see __init__) It returns the whole sequence of chromosome
+        of concern in this DP_exon_search object
         """
-        # there is a repeat in parsing user_inputs here, see __init__
         seq_read = SeqIO.read('./fasta/%s.fa'%self.chrom, 'fasta')
         # This function is specific to the way we put our files
         # This should be generalised to handle other situations
@@ -412,23 +551,37 @@ class DP_exon_search(object):
         return seq_read.seq
 
     def get_seq(self, primer_specification):
+        '''
+        Return the sequence of primer from the background based
+        on its specification.
+
+        primer_specification : (3' position, length, direction)
+        '''
         three_prime_pos, length, dir = primer_specification
         if dir == 'f':
             return self.background[three_prime_pos - length+1: three_prime_pos +1]
         elif dir == 'r':
             seq = self.background[three_prime_pos: three_prime_pos + length]
+             # return the reverse complement if the primer is a reverse primer
             return rev_complement(seq)
         else:
             print("Warning: please specify your primer direction 'f' or 'r'")
 
 
     def pick_primer_set(self):
+        '''
+        Look through starting from the end of pos_memo, pick the best scored
+        "starting position" and then trace back using the tile_size and overlap
+        chosen at each position to recover the optimal primer set.
+
+        '''
         if not self.primer_memo:
             print('Warning: The search has not been run')
             return
         
-        
-        best_reverse_start = None
+        # look from the end of pos_memo until it hits
+        # the end of the region and determine the best starting position
+        best_reverse_start = None # this will be a negative integer
         best_start_score = 0
         for pos in range(-1, -self.max_tile -1,-1):
             pos_info = self.pos_memo[pos]
@@ -436,12 +589,16 @@ class DP_exon_search(object):
             if pos_score > best_start_score:
                 best_start_score = pos_score
                 best_reverse_start = pos
+
         region_size_remaining = self.exon_length \
                                 + self.max_tile \
                                 + best_reverse_start
                                  # reverse_start is negative
 
         position = best_reverse_start
+        # while we are still in the region 
+        # notice the definition of "region" is loosen to include
+        # the overhang of the last tile
         while abs(position) < region_size_remaining:
             (pos_score, tile_size, 
              overlap, f_primer, r_primer) = self.pos_memo[position]
@@ -484,41 +641,6 @@ class DP_exon_search(object):
                 %(self.chrom, self.exon_start, self.exon_end))
 
 
-
-
-
-
-
-#class Primer(object):
-#    def __init__(self, chrom, start, end, direction):
-#        assert direction == 'f' or direction == 'r'
-#         self.chrom = chrom
-#         self.direction = direction
-#         self.start_pos = start
-#         self.end_pos = end
-#         self.length = end - start
-#         self.raw_scores = None
-#         self.scores = None
-#         self.total_score = None
-        # self.sequence = None
-        # a decision to make here
-        # to avoid storing the sequence we can 
-        # Only calculate this when get_sequence is called
-        # when the sequence is needed or,
-        # to avoid recalculaton, the sequence is stored
-        # as an attribute.
-
-#    def get_sequence(self):
-#        # return sequence
-#        # or if self.sequence == None:
-#        #    calculate
-#        #    self.sequence == sequence
-#        #    else:
-#        #       return self.sequence?? hmm...
-#        pass
-#
-#    def get_3prime(self):
-#        pass
 
 
 
