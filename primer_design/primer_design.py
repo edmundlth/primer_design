@@ -162,7 +162,7 @@ def parse_args():
                         help = ''' A BED file specifying all the coordinates
                         of the regions of interest ''')
     parser.add_argument('--outfile', metavar = "OUTPUT_FILE", type = str,
-                        default = 'primer_out.txt',
+                        default = 'primer_out.tsv',
                         help = ''' A string specifying the name of the output
                         file''')
     parser.add_argument('--sense_heel', metavar = 'SENSE_HEEL', type = str,
@@ -190,6 +190,7 @@ def parse_args():
                             primer length ranging from 15 to 25 inclusive''')
     parser.add_argument('--allowed_overlap', metavar ="ALLOWED_TILE_OVERLAP",
                         type=int, default = 5,
+
                         help = '''An integer specifying the allowed overlaping 
                         between successive tiles.
                         Defaulted to 5''')
@@ -258,7 +259,7 @@ def parse_args():
                         the scoring of hairpins.
                         Default to 1.5''')
     parser.add_argument('--auxfile', metavar = "AUXILIARY_FILE", type = str,
-                        default = 'auxiliary_primer_out.txt',
+                        default = 'auxiliary_primer_out.tsv',
                         help = '''A string specifying the name of an auxiliary
                         output files that will record some additional data
                         and statistics''')
