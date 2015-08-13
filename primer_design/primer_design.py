@@ -177,7 +177,7 @@ def main():
 
     # collect all aux data from each exon search
     # a post process statistics is then done on it.
-    auxiliary_data = [[],[]] # lists for tiles and overlap 
+    auxiliary_data = {} # lists for tiles and overlap 
 
 
     for chromo in bed_coords:
@@ -198,10 +198,11 @@ def main():
             print("Search-pick-write time: %s"%time_taken)
 
             # assemble aux_data
+            auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
+                                    list(searcher.aux_data['overlap']),
+                                    searcher.exon_length, time_taken]
             tiles_chosen = searcher.aux_data['tiles']
             overlaps = searcher.aux_data['overlap']
-            auxiliary_data[0].extend(tiles_chosen)
-            auxiliary_data[1].extend(overlaps)
 
     for tile, overlap in zip(auxiliary_data[0],auxiliary_data[1]):
         output = map(str, [tile, overlap])
