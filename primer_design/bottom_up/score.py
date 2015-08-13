@@ -64,7 +64,6 @@ class Score(object):
             self.tm_func = Tm_Wallace
         else:
             print("Warning: Tm prediction function not chosen, default to Tm_NN")
-            self.tm_func = Tm_NN
 
 
 
