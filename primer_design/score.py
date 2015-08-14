@@ -24,6 +24,11 @@ class Score(object):
 
 
     def _handle_user_inputs(self, user_inputs):
+        """
+        This private method is called during the class initiation
+        to assign all relevant user input to corresponding 
+        class attributes.
+        """
         self.target_tm = user_inputs.target_tm
         self.tm_underachieve_weight = user_inputs.tm_underachieve
         self.sense_heel = user_inputs.sense_heel.upper()
@@ -66,6 +71,7 @@ class Score(object):
             print("Warning: Tm prediction function not chosen, default to Tm_NN")
 
 
+    # Functions that map sequence to their relevant raw data.
 
     def raw_tm(self, seq):
         return self.tm_func(seq)
@@ -129,6 +135,9 @@ class Score(object):
             max_run = run
         return max_run
 
+
+    # Normalisation of the raw data
+
     def normalise_tm(self, tm):
         target = self.target_tm # looking up attribute expensive?
         tm_difference = tm - target
@@ -166,6 +175,10 @@ class Score(object):
         else:
             return 0
 
+
+
+    # Scalarisation of gathered data from the sequence to get
+    # a single number as the score for the sequence
     def score_Lp(self, seq, direction, p = 2):
         p = float(p)
         length = len(seq)
