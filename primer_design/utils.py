@@ -259,7 +259,3 @@ def write_aux(data_dic, auxfile_name):
         auxfile.write('\t'.join(output) + '\n')
     auxfile.close()
 
-
-
-
-

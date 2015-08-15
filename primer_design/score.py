@@ -205,10 +205,3 @@ class Score(object):
     def score_linear(self, seq):
         pass
 
-
-
-
-
-
-
-

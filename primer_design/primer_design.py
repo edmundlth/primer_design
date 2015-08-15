@@ -145,6 +145,7 @@ import sys
 import time
 
 from Bio import SeqIO
+
 from utils import handle_bedfile, rev_complement, write_aux
 from score import Score
 ###############################################################################
@@ -637,13 +638,6 @@ class Dp_exon_search(object):
         outfile.flush()
         print("Finish writing primers of %s %s %s to file"
               %(self.chrom, self.exon_start, self.exon_end))
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':
