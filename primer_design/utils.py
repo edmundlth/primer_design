@@ -243,19 +243,18 @@ def variance(sequence):
     return sum([x**2 for x in sequence])/ float(len(sequence))
 
 def write_aux(data_dic, auxfile_name):
-    auxfile = open(auxfile_name, 'w')
-    header = ['chrom', 'start', 'end', 'length', 'time_taken',
-              'mean_tile', 'num_tile','var_tile', 'mean_overlap',
-              'num_primers_scored']
-    auxfile.write('\t'.join(header) + '\n')
-    for coords, data in data_dic.items():
-        chrom, start, end = coords
-        tiles, overlap, length, time_taken, num_primers = data
-        output = map(str,
-                        [chrom, start, end, length, time_taken,
-                        mean(tiles), len(tiles), variance(tiles),
-                        mean(overlap), num_primers]
-                    )
-        auxfile.write('\t'.join(output) + '\n')
-    auxfile.close()
+    with open(auxfile_name,'w') as auxfile:
+        header = ['chrom', 'start', 'end', 'length', 'time_taken',
+                  'mean_tile', 'num_tile','var_tile', 'mean_overlap',
+                  'num_primers_scored']
+        auxfile.write('\t'.join(header) + '\n')
+        for coords, data in data_dic.items():
+            chrom, start, end = coords
+            tiles, overlap, length, time_taken, num_primers = data
+            output = map(str,
+                            [chrom, start, end, length, time_taken,
+                            mean(tiles), len(tiles), variance(tiles),
+                            mean(overlap), num_primers]
+                        )
+            auxfile.write('\t'.join(output) + '\n')
 

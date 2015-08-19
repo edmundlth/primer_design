@@ -113,10 +113,7 @@ class Score(object):
 
     def raw_gc_clamp(self,seq):
         end_with = seq[-1].upper()
-        if end_with == 'G' or end_with == 'C':
-            return 1
-        else:
-            return 0
+        return float(end_with == 'G' or end_with == 'C')
 
     def raw_run(self, seq):
         seq = seq.upper()
@@ -170,10 +167,7 @@ class Score(object):
         return 100 * (1 - hairpin / maximum_hairpin)
 
     def normalise_gc_clamp(self, gc_clamp):
-        if gc_clamp:
-            return 100
-        else:
-            return 0
+        return float(bool(gc_clamp)) * 100
 
 
 

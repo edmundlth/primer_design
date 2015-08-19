@@ -1,6 +1,9 @@
 """
                 Primer design
-Author: Edmund, Bernie, Daniel, Tu
+Authors: Bernard J. Pope, 
+         Daniel J. Park,
+         Tu Nguyen,
+         Edmund Lau
 Email: elau1@student.unimelb.edu.au
 
 One line description:
@@ -46,18 +49,21 @@ Definitions:
     - eg. ('chr1', 50, 100) is the downstream sequence at chromosome 1
       with 0 based index 50,51,52,....,99
 
-    background :: String or Bio.Seq object
-    - The background sequence in which out region of interest or
+    reference :: String or Bio.Seq object
+    - The reference sequence in which out region of interest or
       primers are embedded in.
     - In this program, it's the whole chromosome.
 
-    region :: (Int, Int)    # synonymous with exon
-    - (start pos, end pos) 0-based index
-    - this is part of the background which is intended to be amplified
+    region :: (Int, Int)
+    - (start pos, end pos) 0-based index, open end points
+    - this is part of the reference which is intended to be amplified
 
     primer :: (Int, Int, String)
     - (3' position, length, direction)
-    - only applicable in the context where the background is known
+    - direction is taken with respect to the sense DNA strand.
+      'f' = forward = 5' -> 3' = left to right
+      'r' = reverse = 3' -> 5' = right to left
+    - only applicable in the context where the reference is known
     - 0-based indexing.
     - eg. (50,5, 'f') is the forward primer found by taking
       the sequence with 0-based index
@@ -67,13 +73,13 @@ Definitions:
                    50,51,52,53,54
 
     primer_set :: [primer]
-    - a set of primers which, hopefully, tile the entire region
+    - a set of primers which, tile the entire region
 
-    seq or sequence :: String
+    sequence :: String
     - the actual sequence of nucleic acid alphabets
 
     tile :: (Int, Int)
-    - (Start pos, length), 0-based index relative to background
+    - (Start pos, length), 0-based index relative to the reference 
     - eg. (10, 5) is the tile starting at 10 with length 5, ie
       it cover the segment with index 10,11,12,13,14
     - associated with a tile is the forward and revserse primers
@@ -115,29 +121,6 @@ Brief Description of the Bottom Up Dynamic Programming:
     # now that the memo is prepared
     search through memo:
        the best scored final position will be our solution
-
-
-
-
-Commandline arguments (user input):
-    - BED file
-    - fasta choice?
-    - Heel sequence
-    - tiles (from min to max inclusive)
-    - optimal primer length
-    - primer length variation
-    - tile overlap allowed
-    - scoring function used
-    - target Tm
-    - tm underachieve penalty weight
-    - tm funciton used
-    - Concentration of Na, K, Mg, Tris, dNTPs, DMSO, dnac1, dnc2,
-         * DMSO not added yet
-    - saltcorr
-    - GCweight
-    - outfile
-    - Auxilarry output file for tile_size distributions and other data
-
 """
 from argparse import ArgumentParser
 import logging
@@ -151,6 +134,19 @@ from score import Score
 ###############################################################################
 
 DEFAULT_LOG_FILE = 'primer_design.log'
+DEFAULT_OUTFILE = 'primer_out.tsv'
+DEFAULT_PRIMER_LENGTH = 20
+DEFAULT_PRIMER_LENGTH_VAR = 8
+DEFAULT_ALLOWED_OVERLAP = 5
+DEFAULT_TM_FUNC = 'Tm_NN'
+DEFAULT_SCORE_FUNC = 'score_Lp'
+DEFAULT_TARGET_TM = 64.0
+DEFAULT_TM_UNDERACHIEVE = 1.0
+DEFAULT_SALTCORR = 5
+DEFAULT_CONC = [50, 0, 0, 0, 0, 25, 25]
+DEFAULT_GC_WEIGHT = 1.5
+DEFAULT_AUXFILE = 'auxiliary_primer_out.tsv'
+
 
 def parse_args():
     'Parse command line arguments for the program'
@@ -163,7 +159,7 @@ def parse_args():
                         help=''' A BED file specifying all the coordinates
                         of the regions of interest ''')
     parser.add_argument('--outfile', metavar="OUTPUT_FILE", type=str,
-                        default='primer_out.tsv',
+                        default=DEFAULT_OUTFILE,
                         help=''' A string specifying the name of the output
                         file''')
     parser.add_argument('--sense_heel', metavar='SENSE_HEEL', type=str,
@@ -179,47 +175,40 @@ def parse_args():
                         help=''' A pair of integers specifying the maximum
                         and the minimum tile sizes inclusive''')
     parser.add_argument('--primer_length', metavar='PRIMER_LENGTH', type=int,
-                        default=20,
+                        default=DEFAULT_PRIMER_LENGTH,
                         help='''An integer specifying the optimal primer length
                         Defaulted to 20''')
     parser.add_argument('--primer_length_var', metavar='PRIMER_LENGTH_VARIATION',
-                        type=int, default=8,
+                        type=int, default=DEFAULT_PRIMER_LENGTH_VAR,
                         help='''An integer specifying the amount of variation
                         from the optimal primer length.
                         Defaulted to 8
                         Eg: optimal length of 20 and variation of 5 gives
                             primer length ranging from 15 to 25 inclusive''')
     parser.add_argument('--allowed_overlap', metavar="ALLOWED_TILE_OVERLAP",
-                        type=int, default=5,
+                        type=int, default=DEFAULT_ALLOWED_OVERLAP,
                         help='''An integer specifying the allowed overlaping
                         between successive tiles.
                         Defaulted to 5''')
     parser.add_argument('--score_func', metavar="SCORING_FUNCTION",
-                        type=str, default='score_Lp',
+                        type=str, default=DEFAULT_SCORE_FUNC,
+                        choices=['score_Lp', 'score_linear'],
                         help=''' A string specifying the name of the
-                        scoring function to be used.
-                        Options include:
-                           score_Lp
-                           score_linear
-                           ''')
+                        scoring function to be used.''')
     parser.add_argument('--tm_func', metavar='TM_FUNCTION', type=str,
-                        default='Tm_NN',
+                        default=DEFAULT_TM_FUNC,
+                        choices=['Tm_NN', 'Tm_GC', 'Tm_Wallace'],
                         help='''A string specifying the name of the
                         melting temperature prediction algorithm used.
-                        Defaulted to Tm_NN
-                        Options include:
-                           Tm_NN  (Nearest Neighbor thermodynamics)
-                           Tm_GC  (Prediction using GC content of sequence)
-                           Tm_Wallace (Wallace's 2-4 rule)
-                           ''')
+                        Defaulted to Tm_NN''')
     parser.add_argument('--target_tm', metavar="TARGET_TM", type=float,
-                        default=64.0,
+                        default=DEFAULT_TARGET_TM,
                         help='''A floating point number specifying the
                         target melting point of the reaction mixture
                         in degree Celsius.
                         Defaulted to 64.0 degC''')
     parser.add_argument('--tm_underachieve', metavar="TM_UNDERACHIEVE_PENALTY",
-                        type=float, default=1.0,
+                        type=float, default=DEFAULT_TM_UNDERACHIEVE,
                         help='''A floating point number specifying the
                         penalty weight given to an underachieving primer
                         in term of tm, ie has lower melting temperature than
@@ -227,7 +216,8 @@ def parse_args():
                         harsher than higher ones, there for the value should
                         be > 1.''')
     parser.add_argument('--saltcorr', metavar="SALTCORR", type=int,
-                        default=5,
+                        default=DEFAULT_SALTCORR,
+                        choices=range(0,8),
                         help=''' An integer from 0 to 7 inclusive indicating
                         the saltcorrection method to be used during
                         melting temperature prediction.
@@ -236,7 +226,7 @@ def parse_args():
                         Biopython Bio.SeqUtils.MeltingTemp module
                         Default to 5.''')
     parser.add_argument('--conc', metavar="CONCENTRATIONS", type=float,
-                        nargs=7, default=[50, 0, 0, 0, 0, 25, 25],
+                        nargs=7, default=DEFAULT_CONC,
                         help=''' 7 floating point numbers which give the
                         the concentration of the following chemical species:
                             - Na (in mM)
@@ -253,13 +243,13 @@ def parse_args():
                             Default to [50, 0, 0, 0, 0, 25, 25]
                             ''')
     parser.add_argument('--gc_weight', metavar="GC_WEIGHT", type=float,
-                        default=1.5,
+                        default=DEFAULT_GC_WEIGHT,
                         help='''A floating point number >1 specifying the
                         weight given to G-C binding over A-T binding during
                         the scoring of hairpins.
                         Default to 1.5''')
     parser.add_argument('--auxfile', metavar="AUXILIARY_FILE", type=str,
-                        default='auxiliary_primer_out.tsv',
+                        default=DEFAULT_AUXFILE,
                         help='''A string specifying the name of an auxiliary
                         output files that will record some additional data
                         and statistics''')
@@ -278,14 +268,19 @@ def start_log(log):
 
 
 def main():
-    ''' Main function of the program'''
+    ''' Main() function'''
     #parse commandline inputs
     user_inputs = parse_args()
-    print('These are your inputs:')
-    print(user_inputs)
-
     start_log(user_inputs.log)
 
+    primer_design(user_inputs)
+
+
+def primer_design(user_inputs):
+    """
+    The function that takes in the all command line parameter 
+    and execute the primer design process.
+    """
     scoring = Score(user_inputs) # handle the user input regarding scoring
     score_func = scoring.score_func # the score function that will be used
 
@@ -296,80 +291,80 @@ def main():
     outfile_header = ['name', 'start', 'end', 'sequence',
                       'length', 'tm', 'entropy', 'hairpin',
                       'gc', 'gc_clamp', 'run']
-    outfile = open(user_inputs.outfile, 'w')
-    outfile.write('\t'.join(outfile_header) + '\n')
+    with open(user_inputs.outfile, 'w') as outfile:
+        outfile.write('\t'.join(outfile_header) + '\n')
 
-    # initialise a auxiliary data dictionary that will collect data
-    # from each run which will be written into an auxiliary file
-    # a post process statistics is then done on it.
-    auxiliary_data = {}
+        # initialise a auxiliary data dictionary that will collect data
+        # from each run which will be written into an auxiliary file
+        # a post process statistics is then done on it.
+        auxiliary_data = {}
 
+        # Now we loop through all specified regions,
+        # search for optimal primer set (prepare the memos),
+        # pick the optimal primer set,
+        # write primers and their datas to output files
+        for chromo in bed_coords:
+            for region_coord in bed_coords[chromo]:
+                before_time = time.time() # time each run
 
-    # Now we loop through all specified regions,
-    # search for optimal primer set (prepare the memos),
-    # pick the optimal primer set,
-    # write primers and their datas to output files
-    for chromo in bed_coords:
-        for region_coord in bed_coords[chromo]:
-            before_time = time.time() # time each run
+                coords = (chromo, region_coord[0], region_coord[1])
+                searcher = Dp_search(user_inputs, coords, score_func)
+                searcher.dp_search()
+                #print(searcher.pos_memo)
+                searcher.pick_primer_set()
+                searcher.write_output(outfile)
 
-            coords = (chromo, region_coord[0], region_coord[1])
-            searcher = Dp_exon_search(user_inputs, coords, score_func)
-            searcher.dp_search()
-            #print(searcher.pos_memo)
-            searcher.pick_primer_set()
-            searcher.write_output(outfile)
+                after_time = time.time()
+                time_taken = after_time - before_time
+                print("%s %s %s"%coords)
+                print("length %i"%searcher.region_length)
+                print("Search-pick-write time: %s\n"%time_taken)
 
-            after_time = time.time()
-            time_taken = after_time - before_time
-            print("%s %s %s"%coords)
-            print("length %i"%searcher.exon_length)
-            print("Search-pick-write time: %s\n"%time_taken)
+                # assemble aux_data
+                auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
+                                          list(searcher.aux_data['overlap']),
+                                          searcher.region_length, time_taken,
+                                          len(searcher.primer_memo)]
 
-            # assemble aux_data
-            auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
-                                      list(searcher.aux_data['overlap']),
-                                      searcher.exon_length, time_taken,
-                                      len(searcher.primer_memo)]
-
-    # The primer design process is now completed
-    # write auxiliary data into auxfile
-    write_aux(auxiliary_data, user_inputs.auxfile)
-    outfile.close()
+        # The primer design process is now completed
+        # write auxiliary data into auxfile
+        write_aux(auxiliary_data, user_inputs.auxfile)
 
 
-class Dp_exon_search(object):
+class Dp_search(object):
     """
-    Dp_exon_search object initialise the 'search for best primer set'
+    Dp_search object initialise the 'search for best primer set'
     process. It takes in all command-line arguments
        *may or may not be usefull
     , a scoring function (* see Score() class) and
-    exon_coords :: (chrom, start, end), eg (chr1, 0, 100).
+    region_coords :: (chrom, start, end), eg (chr1, 0, 100).
 
     It initialise a class level pos_memo and primer_memo for
     Dynamic programming purpose.
     """
-    def __init__(self, user_inputs, exon_coords, score_func):
+    def __init__(self, user_inputs, region_coords, score_func):
         self.score_primer = score_func
 
         self.min_tile, self.max_tile = user_inputs.tiles
         self.tile_sizes = [self.min_tile + extend
                            for extend in
                            range(self.max_tile - self.min_tile + 1)]
-        self.chrom, self.exon_start, self.exon_end = exon_coords
-        self.exon_length = self.exon_end - self.exon_start
+        self.chrom, self.region_start, self.region_end = region_coords
+        self.region_length = self.region_end - self.region_start
 
-        self.background = self._get_background()
+        self.reference = self._get_reference()
 
         # tiling_range is the maximum number of bases that will be
         # covered by any tiling pattern
         # this will be the number of postion needed to be memoized
-        self.tiling_range = self.exon_length + 2 * (self.max_tile -1)
+        self.tiling_range = self.region_length + 2 * (self.max_tile -1)
         self.allowed_overlap = user_inputs.allowed_overlap
         self.primer_length = user_inputs.primer_length
         self.primer_length_var = user_inputs.primer_length_var
 
         # initiallise both memos
+        # position memo is a list of 5-tuple recording 
+        # (score, tile size, overlap, f_primer, r_primer)
         self.pos_memo = [(0, 0, 0, None, None)
                          for index in range(self.tiling_range)]
         self.primer_memo = {}
@@ -386,9 +381,9 @@ class Dp_exon_search(object):
     def dp_search(self):
         """
         This method will try all legal tiling patterns, that is:
-            The exon is a subset of the union of the tiles
+            The region is a subset of the union of the tiles
             All tiles are of the sizes specified
-            All tiles has at least 1bp intersection with the exon
+            All tiles has at least 1bp intersection with the region 
             Tiles can overlap each other at most allowed_overlap bp.
             (specified by user_inputs, see __init__)
 
@@ -398,9 +393,9 @@ class Dp_exon_search(object):
         primer_memo
         """
 
-        # the bottom up DP start at the first base of the exon
+        # the bottom up DP start at the first base of the region
         # since legal tile must intersect at least 1 base
-        # but ends PREMATURELY at the end of the exon + min_tile
+        # but ends PREMATURELY at the end of the region + min_tile
         # so as to ensure that all tiles intersect with the region
         # Though we can allow tile go beyond, that case is
         # handled in a separate for loop
@@ -409,9 +404,9 @@ class Dp_exon_search(object):
         # This separation should be handled with a separate private method
         # (because i am repeating myself in codes)
 
-        start_search = self.exon_start
-        end_search = self.exon_end-1 + self.min_tile
-        # notice 0 based indexing for the end of exon is self.exon_end -1
+        start_search = self.region_start
+        end_search = self.region_end-1 + self.min_tile
+        # notice 0 based indexing for the end of region is self.region_end -1
         for pos in range(start_search, end_search):
             best_score = 0
             best_f = None
@@ -430,11 +425,11 @@ class Dp_exon_search(object):
                     # if this tile is chosen and take the best one,
                     # allowing for overlap of this and previous tile
                     # To access previous pos:
-                    # 1) bring pos back to 0 if pos is at self.exon_start
+                    # 1) bring pos back to 0 if pos is at self.region_start
                     # 2) add self.max_tile -1 to go to current pos_memo entry
                     # 3) shift back by t_size to get previous tiles score
                     # 4) but allow for the overlaping.
-                    prefix_pos = pos - self.exon_start \
+                    prefix_pos = pos - self.region_start \
                                  + self.max_tile -1 \
                                   - t_size + overlap
                     prefix_score = self.pos_memo[prefix_pos][0]
@@ -446,7 +441,7 @@ class Dp_exon_search(object):
                         best_r = r_primer
                         best_overlap = overlap
                         best_tile_size = t_size
-            position_in_memo = pos - self.exon_start + self.max_tile -1
+            position_in_memo = pos - self.region_start + self.max_tile -1
             self.pos_memo[position_in_memo] = (best_score,
                                                best_tile_size,
                                                best_overlap,
@@ -455,11 +450,11 @@ class Dp_exon_search(object):
 
 
         # redefine start and end searching position to handle
-        # the tiles that go beyong exon + min_tile -1
+        # the tiles that go beyong region + min_tile -1
         start_search = end_search
-        end_search = self.exon_end-1 + self.max_tile
-        # exon_end is bed file coord, ie 0-based
-        # hence the actual exon_ending position is exon_end -1
+        end_search = self.region_end-1 + self.max_tile
+        # region_end is bed file coord, ie 0-based
+        # hence the actual region ending position is region_end -1
         for pos in range(start_search, end_search):
             best_score = 0
             best_f = None
@@ -467,12 +462,12 @@ class Dp_exon_search(object):
             best_overlap = 0
             best_tile_size = None
             for t_size in self.tile_sizes:
-                if pos - t_size < self.exon_end: # if tile still overlap
+                if pos - t_size < self.region_end: # if tile still overlap
                     tile = (pos - t_size +1, t_size)
                     tile_primer_pair = self.best_primers_in_tile(tile)
                     tile_score, f_primer, r_primer = tile_primer_pair
                     for overlap in range(self.allowed_overlap):
-                        prefix_pos = pos - self.exon_start \
+                        prefix_pos = pos - self.region_start \
                                      + self.max_tile -1 \
                                       - t_size + overlap
                         prefix_score = self.pos_memo[prefix_pos][0]
@@ -484,7 +479,7 @@ class Dp_exon_search(object):
                             best_r = r_primer
                             best_overlap = overlap
                             best_tile_size = t_size
-            position_in_memo = pos - self.exon_start + self.max_tile -1
+            position_in_memo = pos - self.region_start + self.max_tile -1
             self.pos_memo[position_in_memo] = (best_score,
                                                best_tile_size,
                                                best_overlap,
@@ -494,7 +489,7 @@ class Dp_exon_search(object):
 
     def best_primers_in_tile(self, tile):
         '''
-        Take a tile in the background region and look for the best
+        Take a tile in the reference region and look for the best
         forward and reverse primers (best with respect to their length)
         '''
         best_f_score = 0
@@ -537,11 +532,11 @@ class Dp_exon_search(object):
         return (total_score, best_f, best_r)
 
 
-    def _get_background(self):
+    def _get_reference(self):
         """
         This is a private method used when initialising the class.
         (see __init__) It returns the whole sequence of chromosome
-        of concern in this Dp_exon_search object
+        of concern in this Dp_search object
         """
         seq_read = SeqIO.read('./fasta/%s.fa'%self.chrom, 'fasta')
         # This function is specific to the way we put our files
@@ -551,16 +546,16 @@ class Dp_exon_search(object):
 
     def get_seq(self, primer_specification):
         '''
-        Return the sequence of primer from the background based
+        Return the sequence of primer from the reference based
         on its specification.
 
         primer_specification : (3' position, length, direction)
         '''
         three_prime_pos, length, direction = primer_specification
         if direction == 'f':
-            return self.background[three_prime_pos - length+1: three_prime_pos +1]
+            return self.reference[three_prime_pos - length+1: three_prime_pos +1]
         elif direction == 'r':
-            seq = self.background[three_prime_pos: three_prime_pos + length]
+            seq = self.reference[three_prime_pos: three_prime_pos + length]
              # return the reverse complement if the primer is a reverse primer
             return rev_complement(seq)
         else:
@@ -589,7 +584,7 @@ class Dp_exon_search(object):
                 best_start_score = pos_score
                 best_reverse_start = pos
 
-        region_size_remaining = self.exon_length \
+        region_size_remaining = self.region_length \
                                 + self.max_tile \
                                 + best_reverse_start
                                  # reverse_start is negative
@@ -621,7 +616,7 @@ class Dp_exon_search(object):
             three_prime_pos, length, direction = primer
 
             # produce bed file format coordinates for primer name
-            position_shift = self.exon_start - self.max_tile +1
+            position_shift = self.region_start - self.max_tile +1
             start = three_prime_pos - length +1 + position_shift
             end = three_prime_pos +1 + position_shift
             primer_seq = self.get_seq(primer)
@@ -637,7 +632,7 @@ class Dp_exon_search(object):
             outfile.write(row_output)
         outfile.flush()
         print("Finish writing primers of %s %s %s to file"
-              %(self.chrom, self.exon_start, self.exon_end))
+              %(self.chrom, self.region_start, self.region_end))
 
 
 if __name__ == '__main__':
