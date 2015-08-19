@@ -1,6 +1,46 @@
 import sys
 
+def weighted_num_complement(seq1,seq2,gc_weight = 1.5):
+    weighted_num_complement = 0
+    for b1,b2 in zip(seq1,seq2):
+        if is_complement(b1,b2):
+            b1 = b1.upper()
+            if b1 == 'G' or b1 == 'C':
+                weighted_num_complement += gc_weight
+            else:
+                weighted_num_complement +=1                                                 
+    return weighted_num_complement
+    
 
+def is_complement(base1,base2):
+    complement_dic = {'A':'T','G':'C','T':'A','C':'G'}
+    if base1 in complement_dic:
+        return complement_dic[base1] == base2
+    else:
+        return False
+
+
+complement = {'A':'T','G':'C','C':'G','T':'A'}
+def rev_complement(seq):
+    seq = seq.upper()
+    return ''.join(complement[base] for base in seq)[::-1]
+
+def mean(sequence):
+    if sequence:
+        return sum(sequence)/float(len(sequence))
+    else:
+        return 0.0
+
+def variance(sequence):
+    if sequence:
+        return sum([x**2 for x in sequence])/ float(len(sequence))
+    else:
+        return 0.0
+
+
+
+
+################## Experimenting on Nearest Neighbor delG prediction#########
 
 DNA_NN3 = { 'init': (0, 0), 'init_A/T': (2.3, 4.1), 'init_G/C': (0.1, -2.8), 
             'init_oneG/C': (0, 0), 'init_allA/T': (0, 0), 'init_5T/A': (0, 0), 
@@ -195,66 +235,3 @@ def stability(seq1,seq2, temp = 60.0, shift = 0,
 
     deltaG = deltaH + temp * deltaS
     return deltaG
-
-def weighted_num_complement(seq1,seq2,gc_weight = 1.5):
-    weighted_num_complement = 0
-    for b1,b2 in zip(seq1,seq2):
-        if is_complement(b1,b2):
-            b1 = b1.upper()
-            if b1 == 'G' or b1 == 'C':
-                weighted_num_complement += gc_weight
-            else:
-                weighted_num_complement +=1                                                 
-    return weighted_num_complement
-    
-
-def is_complement(base1,base2):
-    complement_dic = {'A':'T','G':'C','T':'A','C':'G'}
-    if base1 in complement_dic:
-        return complement_dic[base1] == base2
-    else:
-        return False
-
-
-
-def handle_bedfile(bedfile):
-    file = open(bedfile)
-    bed_dictionary = {}
-    for line in file:
-        chromo, start, end = line.strip().split('\t')[:3]
-        start, end = map(int, [start, end])
-        if chromo in bed_dictionary:
-            bed_dictionary[chromo].append(  (start, end)  )
-        else:
-            bed_dictionary[chromo] = [(start,end)]
-    return bed_dictionary
-
-
-
-complement = {'A':'T','G':'C','C':'G','T':'A'}
-def rev_complement(seq):
-    seq = seq.upper()
-    return ''.join(complement[base] for base in seq)[::-1]
-
-def mean(sequence):
-    return sum(sequence)/float(len(sequence))
-
-def variance(sequence):
-    return sum([x**2 for x in sequence])/ float(len(sequence))
-
-def write_aux(data_dic, auxfile_name):
-    with open(auxfile_name,'w') as auxfile:
-        header = ['chrom', 'start', 'end', 'length', 'time_taken',
-                  'mean_tile', 'num_tile','var_tile', 'mean_overlap',
-                  'num_primers_scored']
-        auxfile.write('\t'.join(header) + '\n')
-        for coords, data in data_dic.items():
-            chrom, start, end = coords
-            tiles, overlap, length, time_taken, num_primers = data
-            output = map(str,
-                            [chrom, start, end, length, time_taken,
-                            mean(tiles), len(tiles), variance(tiles),
-                            mean(overlap), num_primers]
-                        )
-            auxfile.write('\t'.join(output) + '\n')
-

@@ -1,10 +1,11 @@
 """
-                Primer design
+        Hiplex Primer design Tool
 Authors: Bernard J. Pope, 
          Daniel J. Park,
          Tu Nguyen,
          Edmund Lau
 Email: elau1@student.unimelb.edu.au
+###########################################################################
 
 One line description:
     This program design primers for HiPlex PCR reaction
@@ -126,10 +127,11 @@ from argparse import ArgumentParser
 import logging
 import sys
 import time
+import csv
 
 from Bio import SeqIO
 
-from utils import handle_bedfile, rev_complement, write_aux
+from utils import rev_complement, mean, variance
 from score import Score
 ###############################################################################
 
@@ -272,7 +274,6 @@ def main():
     #parse commandline inputs
     user_inputs = parse_args()
     start_log(user_inputs.log)
-
     primer_design(user_inputs)
 
 
@@ -287,7 +288,6 @@ def primer_design(user_inputs):
     # parse bed file and return a dictionary of {chrom: [(start, end), (start, end)]}
     bed_coords = handle_bedfile(user_inputs.bed)
 
-    # write output file header
     outfile_header = ['name', 'start', 'end', 'sequence',
                       'length', 'tm', 'entropy', 'hairpin',
                       'gc', 'gc_clamp', 'run']
@@ -309,10 +309,11 @@ def primer_design(user_inputs):
 
                 coords = (chromo, region_coord[0], region_coord[1])
                 searcher = Dp_search(user_inputs, coords, score_func)
-                searcher.dp_search()
+                #searcher.dp_search()
                 #print(searcher.pos_memo)
-                searcher.pick_primer_set()
-                searcher.write_output(outfile)
+                primer_set = pick_primer_set(searcher)
+                write_primer(outfile, primer_set, searcher)
+                #searcher.write_output(outfile)
 
                 after_time = time.time()
                 time_taken = after_time - before_time
@@ -330,6 +331,7 @@ def primer_design(user_inputs):
         # write auxiliary data into auxfile
         write_aux(auxiliary_data, user_inputs.auxfile)
 
+###################################
 
 class Dp_search(object):
     """
@@ -352,7 +354,7 @@ class Dp_search(object):
         self.chrom, self.region_start, self.region_end = region_coords
         self.region_length = self.region_end - self.region_start
 
-        self.reference = self._get_reference()
+        self.reference = _get_reference(self.chrom)
 
         # tiling_range is the maximum number of bases that will be
         # covered by any tiling pattern
@@ -362,18 +364,17 @@ class Dp_search(object):
         self.primer_length = user_inputs.primer_length
         self.primer_length_var = user_inputs.primer_length_var
 
-        # initiallise both memos
         # position memo is a list of 5-tuple recording 
         # (score, tile size, overlap, f_primer, r_primer)
         self.pos_memo = [(0, 0, 0, None, None)
                          for index in range(self.tiling_range)]
         self.primer_memo = {}
+        self.dp_search()
 
         # chosen primer_set,
         # non-empty only if pick_primer_set was successfully called
-        self.primer_set = []
+        #self.primer_set = []
 
-        # initialise an auxiliary data record
         self.aux_data = {'tiles':[], 'overlap':[]}
 
 
@@ -507,7 +508,7 @@ class Dp_search(object):
             if f_primer in self.primer_memo:
                 f_scores = self.primer_memo[f_primer]
             else:
-                f_sequence = self.get_seq(f_primer)
+                f_sequence = get_primer_seq(self.reference, f_primer)
                 f_scores = self.score_primer(f_sequence, direction='f')
                 self.primer_memo[f_primer] = f_scores
 
@@ -516,7 +517,7 @@ class Dp_search(object):
             if r_primer in self.primer_memo:
                 r_scores = self.primer_memo[r_primer]
             else:
-                r_sequence = self.get_seq(r_primer)
+                r_sequence = get_primer_seq(self.reference, r_primer)
                 r_scores = self.score_primer(r_sequence, direction='r')
                 self.primer_memo[r_primer] = r_scores
 
@@ -532,108 +533,148 @@ class Dp_search(object):
         return (total_score, best_f, best_r)
 
 
-    def _get_reference(self):
-        """
-        This is a private method used when initialising the class.
-        (see __init__) It returns the whole sequence of chromosome
-        of concern in this Dp_search object
-        """
-        seq_read = SeqIO.read('./fasta/%s.fa'%self.chrom, 'fasta')
-        # This function is specific to the way we put our files
-        # This should be generalised to handle other situations
-        # for instance, the fasta files are with multiple chrom
-        return seq_read.seq
+##################
 
-    def get_seq(self, primer_specification):
-        '''
-        Return the sequence of primer from the reference based
-        on its specification.
+def get_primer_seq(reference, primer_specification):
+    '''
+    Return the sequence of primer from the reference based
+    on its specification.
 
-        primer_specification : (3' position, length, direction)
-        '''
-        three_prime_pos, length, direction = primer_specification
-        if direction == 'f':
-            return self.reference[three_prime_pos - length+1: three_prime_pos +1]
-        elif direction == 'r':
-            seq = self.reference[three_prime_pos: three_prime_pos + length]
-             # return the reverse complement if the primer is a reverse primer
-            return rev_complement(seq)
-        else:
-            print("Warning: please specify your primer direction 'f' or 'r'")
+    primer_specification : (3' position, length, direction)
+    '''
+    three_prime_pos, length, direction = primer_specification
+    if direction == 'f':
+        return reference[three_prime_pos - length+1: three_prime_pos +1]
+    elif direction == 'r':
+        seq = reference[three_prime_pos: three_prime_pos + length]
+        # return the reverse complement if the primer is a reverse primer
+        return rev_complement(seq)
+#        else:
+#            print("Warning: please specify your primer direction 'f' or 'r'")
 
 
-    def pick_primer_set(self):
-        '''
-        Look through starting from the end of pos_memo, pick the best scored
-        "starting position" and then trace back using the tile_size and overlap
-        chosen at each position to recover the optimal primer set.
+def _get_reference(chrom):
+    """
+    Intended as a function used when initialising the Dp_search class.
+    (see __init__) It returns the whole sequence of chromosome
+    of concern in this Dp_search object
+    """
+    seq_read = SeqIO.read('./fasta/%s.fa'%chrom, 'fasta')
+    # This function is specific to the way we put our files
+    # This should be generalised to handle other situations
+    # for instance, the fasta files are with multiple chrom
+    return seq_read.seq
 
-        '''
-        if not self.primer_memo:
-            print('Warning: The search has not been run')
+
+def pick_primer_set(searcher):
+    '''
+    Look through starting from the end of pos_memo, pick the best scored
+    "starting position" and then trace back using the tile_size and overlap
+    chosen at each position to recover the optimal primer set.
+
+    '''
+    if not searcher.primer_memo:
+        print('Warning: The search has not been run')
+        return
+
+    # look from the end of pos_memo until it hits
+    # the end of the region and determine the best starting position
+    best_reverse_start = None # this will be a negative integer
+    best_start_score = 0
+    for pos in range(-1, -searcher.max_tile -1, -1):
+        pos_info = searcher.pos_memo[pos]
+        pos_score = pos_info[0]
+        if pos_score > best_start_score:
+            best_start_score = pos_score
+            best_reverse_start = pos
+
+    region_size_remaining = searcher.region_length \
+                            + searcher.max_tile \
+                            + best_reverse_start
+                             # reverse_start is negative
+
+    position = best_reverse_start
+    # while we are still in the region
+    # notice the definition of "region" is loosen to include
+    # the overhang of the last tile
+    while abs(position) < region_size_remaining:
+        (pos_score, tile_size,
+         overlap, f_primer, r_primer) = searcher.pos_memo[position]
+        yield f_primer
+        yield r_primer
+
+        #searcher.primer_set.append(f_primer)
+        #searcher.primer_set.append(r_primer)
+
+        # Beware of tile_size, overlap = 0 case, an infinite loop result
+        if tile_size == 0 and overlap == 0:
+            print("There is error and this will go into an infinite loop")
             return
 
-        # look from the end of pos_memo until it hits
-        # the end of the region and determine the best starting position
-        best_reverse_start = None # this will be a negative integer
-        best_start_score = 0
-        for pos in range(-1, -self.max_tile -1, -1):
-            pos_info = self.pos_memo[pos]
-            pos_score = pos_info[0]
-            if pos_score > best_start_score:
-                best_start_score = pos_score
-                best_reverse_start = pos
-
-        region_size_remaining = self.region_length \
-                                + self.max_tile \
-                                + best_reverse_start
-                                 # reverse_start is negative
-
-        position = best_reverse_start
-        # while we are still in the region
-        # notice the definition of "region" is loosen to include
-        # the overhang of the last tile
-        while abs(position) < region_size_remaining:
-            (pos_score, tile_size,
-             overlap, f_primer, r_primer) = self.pos_memo[position]
-
-            self.primer_set.append(f_primer)
-            self.primer_set.append(r_primer)
-
-            # Beware of tile_size, overlap = 0 case, an infinite loop result
-            if tile_size == 0 and overlap == 0:
-                print("There is error and this will go into an infinite loop")
-                return
-
-            position -= (tile_size - overlap)
-            self.aux_data['tiles'].append(tile_size)
-            self.aux_data['overlap'].append(overlap)
-        print("Finished picking primers based on pos memo and primer memo")
+        position -= (tile_size - overlap)
+        searcher.aux_data['tiles'].append(tile_size)
+        searcher.aux_data['overlap'].append(overlap)
+    print("Finished picking primers based on pos memo and primer memo")
 
 
-    def write_output(self, outfile):
-        for primer in self.primer_set:
-            three_prime_pos, length, direction = primer
 
-            # produce bed file format coordinates for primer name
-            position_shift = self.region_start - self.max_tile +1
-            start = three_prime_pos - length +1 + position_shift
-            end = three_prime_pos +1 + position_shift
-            primer_seq = self.get_seq(primer)
-            score_data = map(str, self.primer_memo[primer])
-            primer_name = self.chrom + '_' \
-                          + str(start) + '_' \
-                          + str(end) + '_' \
-                          + direction + str(self.primer_set.index(primer) +1)
+def write_aux(data_dic, auxfile_name):
+    with open(auxfile_name,'w') as auxfile:
+        header = ['chrom', 'start', 'end', 'length', 'time_taken',
+                  'mean_tile', 'num_tile','var_tile', 'mean_overlap',
+                  'num_primers_scored']
+        auxfile.write('\t'.join(header) + '\n')
+        for coords, data in data_dic.items():
+            chrom, start, end = coords
+            tiles, overlap, length, time_taken, num_primers = data
+            output = map(str,
+                            [chrom, start, end, length, time_taken,
+                            mean(tiles), len(tiles), variance(tiles),
+                            mean(overlap), num_primers]
+                        )
+            auxfile.write('\t'.join(output) + '\n')
 
-            output = map(str, [primer_name, start, end,
-                               primer_seq, length]) + score_data
-            row_output = '\t'.join(output)+'\n'
-            outfile.write(row_output)
-        outfile.flush()
-        print("Finish writing primers of %s %s %s to file"
-              %(self.chrom, self.region_start, self.region_end))
 
+def write_primer(outfile, primer_set, searcher):
+    writer = csv.writer(outfile, delimiter='\t')
+    max_tile = searcher.max_tile
+    primer_count = 0
+    for primer in primer_set:
+        primer_count +=1
+        three_prime_pos, length, direction = primer
+
+        # produce bed file format coordinates for primer name
+        position_shift = searcher.region_start - searcher.max_tile +1
+        start = three_prime_pos - length +1 + position_shift
+        end = three_prime_pos +1 + position_shift
+        primer_seq = get_primer_seq(searcher.reference, primer)
+        score_data = map(str, searcher.primer_memo[primer])
+        primer_name = searcher.chrom + '_' \
+                      + str(start) + '_' \
+                      + str(end) + '_' \
+                      + direction + str(primer_count)
+
+        output = map(str, [primer_name, start, end,
+                           primer_seq, length]) + score_data
+        writer.writerow(output)
+        #row_output = '\t'.join(output)+'\n'
+        #outfile.write(row_output)
+    outfile.flush()
+    print("Finish writing primers of %s %s %s to file"
+          %(searcher.chrom, searcher.region_start, searcher.region_end))
+
+
+def handle_bedfile(bedfile):
+    file = open(bedfile)
+    bed_dictionary = {}
+    for line in file:
+        chromo, start, end = line.strip().split('\t')[:3]
+        start, end = map(int, [start, end])
+        if chromo in bed_dictionary:
+            bed_dictionary[chromo].append(  (start, end)  )
+        else:
+            bed_dictionary[chromo] = [(start,end)]
+    return bed_dictionary
 
 if __name__ == '__main__':
     main()
