@@ -1,5 +1,5 @@
 """
-        Hiplex Primer design Tool
+        Hi-Plex Primer design Tool
 Authors: Bernard J. Pope, 
          Daniel J. Park,
          Tu Nguyen,
@@ -39,7 +39,7 @@ Description:
 
 
 Conventions:
-    - Indexing are 0-based (similar to BED format and python string)
+    - Indexing are 0-based (similar to BED format and Python string)
     - output files are tab separated (.tsv)
     - Variable names ending with 's' implies a list or tuples of objects
 
@@ -152,7 +152,7 @@ DEFAULT_AUXFILE = 'auxiliary_primer_out.tsv'
 
 def parse_args():
     'Parse command line arguments for the program'
-    parser = ArgumentParser(description='Hiplex primer design tool')
+    parser = ArgumentParser(description='Hi-Plex primer design tool')
     parser.add_argument('--log', metavar="LOG_FILE", type=str,
                         default=DEFAULT_LOG_FILE,
                         help='Log file. Default to %s'%DEFAULT_LOG_FILE)
@@ -160,6 +160,9 @@ def parse_args():
                         required=True,
                         help=''' A BED file specifying all the coordinates
                         of the regions of interest ''')
+    parser.add_argument('--fa', metavar='FASTA_FILE', type=str,
+                        required=True,
+                        help='''The path to the reference fasta files''')
     parser.add_argument('--outfile', metavar="OUTPUT_FILE", type=str,
                         default=DEFAULT_OUTFILE,
                         help=''' A string specifying the name of the output
@@ -225,7 +228,7 @@ def parse_args():
                         melting temperature prediction.
                         0 - no salt corrections.
                         To see individual method, refer to
-                        Biopython Bio.SeqUtils.MeltingTemp module
+                        BioPython Bio.SeqUtils.MeltingTemp module
                         Default to 5.''')
     parser.add_argument('--conc', metavar="CONCENTRATIONS", type=float,
                         nargs=7, default=DEFAULT_CONC,
@@ -292,7 +295,8 @@ def primer_design(user_inputs):
                       'length', 'tm', 'entropy', 'hairpin',
                       'gc', 'gc_clamp', 'run']
     with open(user_inputs.outfile, 'w') as outfile:
-        outfile.write('\t'.join(outfile_header) + '\n')
+        out_writer = csv.writer(outfile,delimiter='\t')
+        out_writer.writerow(outfile_header)
 
         # initialise a auxiliary data dictionary that will collect data
         # from each run which will be written into an auxiliary file
@@ -309,11 +313,9 @@ def primer_design(user_inputs):
 
                 coords = (chromo, region_coord[0], region_coord[1])
                 searcher = Dp_search(user_inputs, coords, score_func)
-                #searcher.dp_search()
-                #print(searcher.pos_memo)
                 primer_set = pick_primer_set(searcher)
-                write_primer(outfile, primer_set, searcher)
-                #searcher.write_output(outfile)
+                write_primer(out_writer, primer_set, searcher)
+                outfile.flush()
 
                 after_time = time.time()
                 time_taken = after_time - before_time
@@ -354,7 +356,7 @@ class Dp_search(object):
         self.chrom, self.region_start, self.region_end = region_coords
         self.region_length = self.region_end - self.region_start
 
-        self.reference = _get_reference(self.chrom)
+        self.reference = _get_reference(user_inputs.fa, self.chrom)
 
         # tiling_range is the maximum number of bases that will be
         # covered by any tiling pattern
@@ -370,10 +372,6 @@ class Dp_search(object):
                          for index in range(self.tiling_range)]
         self.primer_memo = {}
         self.dp_search()
-
-        # chosen primer_set,
-        # non-empty only if pick_primer_set was successfully called
-        #self.primer_set = []
 
         self.aux_data = {'tiles':[], 'overlap':[]}
 
@@ -553,14 +551,17 @@ def get_primer_seq(reference, primer_specification):
 #            print("Warning: please specify your primer direction 'f' or 'r'")
 
 
-def _get_reference(chrom):
+def _get_reference(fa_path, chrom):
     """
     Intended as a function used when initialising the Dp_search class.
     (see __init__) It returns the whole sequence of chromosome
     of concern in this Dp_search object
     """
-    seq_read = SeqIO.read('./fasta/%s.fa'%chrom, 'fasta')
-    # This function is specific to the way we put our files
+    seq_read = SeqIO.read('%s/%s.fa'%(fa_path,chrom), 'fasta')
+
+    # This function require that the directory contain the fasta
+    # directory (can be any name) and each chromosome is contained
+    # in separate fasta files.
     # This should be generalised to handle other situations
     # for instance, the fasta files are with multiple chrom
     return seq_read.seq
@@ -635,8 +636,7 @@ def write_aux(data_dic, auxfile_name):
             auxfile.write('\t'.join(output) + '\n')
 
 
-def write_primer(outfile, primer_set, searcher):
-    writer = csv.writer(outfile, delimiter='\t')
+def write_primer(out_writer, primer_set, searcher):
     max_tile = searcher.max_tile
     primer_count = 0
     for primer in primer_set:
@@ -656,10 +656,7 @@ def write_primer(outfile, primer_set, searcher):
 
         output = map(str, [primer_name, start, end,
                            primer_seq, length]) + score_data
-        writer.writerow(output)
-        #row_output = '\t'.join(output)+'\n'
-        #outfile.write(row_output)
-    outfile.flush()
+        out_writer.writerow(output)
     print("Finish writing primers of %s %s %s to file"
           %(searcher.chrom, searcher.region_start, searcher.region_end))
 
