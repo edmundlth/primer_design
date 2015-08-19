@@ -1,12 +1,28 @@
 Hi-Plex Primer Design Tool
 ==========================
 
-Program Description:
+Downloading
+-----------
+The program can be installed using pip (Python's package manager) as follow:  
+
+    $pip install https://github.com/edmundlth/primer_design  
+
+
+Example usage
+-------------
+A test case is included in the Python package downloaded.  
+The BED-file for the test case (example.bed) is located in the same directory
+as primer\_design.py - the main module - together with a directory named 'fasta'
+containing a file named 'example.fa' containing the reference sequence needed.  
+
+Use the following command in the directory containing primer\_design.py:  
+
+$python primer\_design.py --log 'example.log' --bed 'exmaple.bed' --fa './fasta' --outfile 'example.tsv' --sense\_heel ctctctatgggcagtcggtgatt --antisense\_heel ctgcgtgtctccgactcag --tiles 100 110 --primer\_length 20 --primer\_length\_var 2 --allowed\_overlap 5 --score\_func 'score\_Lp' --tm\_func 'Tm\_NN' --target\_tm 64.0 --tm\_underachieve 1.0 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc\_weight 1.5 --auxfile 'example\_aux.tsv'
+
+Program Description
 --------------------
 Hi-Plex is a highly multiplexed PCR system. This software is the primer design software
 for the system.  
-The program can be installed using pip (Python's package manager) as follow:  
-    $pip install https://github.com/edmundlth/primer_design  
   
 The program is a command-line tool which takes in the following arguments,  
 (use command-line --help for more description):  
@@ -31,7 +47,7 @@ The program is a command-line tool which takes in the following arguments,
 * --gc\_weight     *Specify the importance of a G-C binding relative to A-T*
 
   
-Note:
+Note:  
 The program require that the BED-file naming convention to be consistent with
 the fasta files names containing the reference sequences, i.e.,  
 the name of each fasta file should be the same of the names provided at the  
