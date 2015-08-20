@@ -17,7 +17,7 @@ containing a file named 'example.fa' containing the reference sequence needed.
 
 Use the following command in the directory containing primer\_design.py:  
 
-$python primer\_design.py --log 'example.log' --bed 'exmaple.bed' --fa './example\_fasta' --outfile 'example.tsv' --sense\_heel ctctctatgggcagtcggtgatt --antisense\_heel ctgcgtgtctccgactcag --tiles 100 110 --primer\_length 20 --primer\_length\_var 2 --allowed\_overlap 5 --score\_func 'score\_Lp' --tm\_func 'Tm\_NN' --target\_tm 64.0 --tm\_underachieve 1.0 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc\_weight 1.5 --auxfile 'example\_aux.tsv'
+$python primer\_design.py --log 'example.log' --bed 'example.bed' --fa './example\_fasta' --outfile 'example.tsv' --sense\_heel ctctctatgggcagtcggtgatt --antisense\_heel ctgcgtgtctccgactcag --tiles 50 55 --primer\_length 10 --primer\_length\_var 8 --allowed\_overlap 5 --score\_func 'score\_Lp' --tm\_func 'Tm\_NN' --target\_tm 50.0 --tm\_underachieve 1.0 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc\_weight 1.5 --auxfile 'example\_aux.tsv'
 
 Program Description
 --------------------

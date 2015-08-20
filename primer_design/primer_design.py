@@ -230,7 +230,7 @@ def parse_args():
                         To see individual method, refer to
                         BioPython Bio.SeqUtils.MeltingTemp module
                         Default to 5.''')
-    parser.add_argument('--conc', metavar="CONCENTRATIONS", type=float,
+    parser.add_argument('--conc', metavar="CONC", type=float,
                         nargs=7, default=DEFAULT_CONC,
                         help=''' 7 floating point numbers which give the
                         the concentration of the following chemical species:
