@@ -3,55 +3,44 @@ Hi-Plex Primer Design Tool
 
 Downloading
 -----------
-The program can be installed using pip (Python's package manager) as follow:  
-`pip install https://github.com/edmundlth/primer_design`
-
+We suggest using python virtual environment 'virtualenv' (ref: https://virtualenv.pypa.io/en/latest/) to install the program by following the steps below:
+1. If you haven't install virtualenv, use pip (Python's package manager) to install it:
+  `pip install -U virtualenv`
+2. Change to a working directory of your choice (eg. 'hiplex_dir')
+  `mkdir hiplex_dir`
+  `cd hiplex_dir`
+3. Create the virtual environment with the name of your choice (eg. 'hiplex_env'):
+  `virtualenv hiplex_env`
+4. Activate the virtual environment:
+  `source hiplex_env/bin/activate`
+5. Clone the git repository containing the package:
+  `git clone https://github.com/edmundlth/primer_design`
+6. Now we are ready to install the package into this virtual environment by:
+  `pip install -U primer_design`
+7. Use `primer_design -h` to see command-line arguments available and their descriptions.
 
 Example usage
 -------------
-A test case is included in the Python package downloaded.  
-The BED-file for the test case (example.bed) is located in the same directory
-as primer\_design.py - the main module - together with a directory named 'fasta'
-containing a file named 'example.fa' containing the reference sequence needed.  
-
-Use the following command in the directory containing primer\_design.py:
-
-`primer\_design --log example.log --bed example.bed --fa ./example\_fasta --outfile example.tsv --sense\_heel ctctctatgggcagtcggtgatt --antisense\_heel ctgcgtgtctccgactcag --tiles 50 55 --primer\_length 10 --primer\_length\_var 8 --allowed\_overlap 5 --score\_func score\_Lp --tm\_func Tm\_NN --target\_tm 50.0 --tm\_underachieve 1.0 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc\_weight 1.5 --auxfile example\_aux.tsv`
+A directory called 'example' is included in the packaged.
+As an example usage of the program:
+1. (say we are currently in hiplex_dir from above)
+  `cd primer_design/example`
+You will find the following files here:
+  'example.bed' -- contain 2 BED-file formated coordinates
+  'example.fa' -- contain a sequence of DNA in fasta format
+2. run the program in this directory using the following command-line argument:
+  `primer_design --log example.log --bed example.bed --fa . --outfile example.tsv --sense_heel ctctctatgggcagtcggtgatt --antisense_heel ctgcgtgtctccgactcag --tiles 50 55 --primer_length 10 --primer_length_var 8 --allowed_overlap 5 --score_func score_Lp --tm_func Tm_NN --target_tm 50.0 --tm_underachieve 1.0 --NN_table 3 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc_weight 1.5 --auxfile example_aux.tsv`
 
 Program Description
 --------------------
 Hi-Plex is a highly multiplexed PCR system. This software is the primer design software
-for the system.  
-  
-The program is a command-line tool which takes in the following arguments,  
-(use command-line --help for more description):  
-
-* --bed     **Specifying the path to the BED-file which contains the coordinates**  
-* --fa     **Specify the path to the directory containing the fasta files of reference sequences**  
-* --log     **Specify the logging file name**
-* --outfile     **Specify the name of the file recording primer information**
-* --auxfile     **Specify the name of the file recording auxiliary data**
-* --sense\_heel     **Nucleic acid string specifying the sense heel sequence**
-* --antisense\_heel     **Nucleic acid string specifying the antisense heel sequence**
-* --tiles     **2 numbers specifying the minimum and maximum tile size allowed (inclusive)* 
-* --primer\_length     **A number specifying the optimal primer length**  
-* --primer\_length\_var     **A number specifying the allowed variation in primer length**
-* --allowed\_overlap     **A number specifying the maximum allowed overlaping between tiles**
-* --score\_func     **Specify the scoring function to be used**
-* --tm\_func     **Specify the Melting temperature prediction function to be used**
-* --target\_tm     **Specify the ideal melting temperature**
-* --tm\_underachieve     **Specify the penalty weight for primer with tm < target\_tm**
-* --saltcorr     **Specify the salt correction  method to be used**
-* --conc     **Specify the concentration of various ions**
-* --gc\_weight     **Specify the importance of a G-C binding relative to A-T**
-
-  
-Note:  
-The program require that the BED-file naming convention to be consistent with
-the fasta files names containing the reference sequences, i.e.,  
-the name of each fasta file should be the same of the names provided at the  
-the first column of the BED-file
-
-Using the input parameters, for each region coordinate specifed in the BED-file,  
-the program make a exhausive search of all possible primer set satisfying the  
+for the system. Using the input parameters, for each region coordinate specifed in the BED-file,
+the program make a exhausive search of all possible primer set satisfying the
 constrains that completely tile the region.
+
+
+Note:
+The program require that the BED-file naming convention to be consistent with
+the fasta files names containing the reference sequences, i.e.,
+the name of each fasta file should be the same of the names provided at the
+the first column of the BED-file
