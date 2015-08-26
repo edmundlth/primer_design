@@ -287,9 +287,7 @@ def start_log(log):
 def main():
     ''' Main() function'''
     #parse commandline inputs
-    print(time.time())
     user_inputs = parse_args()
-    print(time.time())
     start_log(user_inputs.log)
     primer_design(user_inputs)
 

@@ -1,7 +1,16 @@
 from utils import weighted_num_complement
-from Bio.SeqUtils.MeltingTemp import Tm_NN, Tm_GC, Tm_Wallace
+from Bio.SeqUtils.MeltingTemp import (Tm_NN, 
+                                      Tm_GC, 
+                                      Tm_Wallace, 
+                                      DNA_NN1, 
+                                      DNA_NN2, 
+                                      DNA_NN3, 
+                                      DNA_NN4)
 from math import log
 import logging
+
+
+THERMO_TABLES = [DNA_NN1, DNA_NN2, DNA_NN3, DNA_NN4]
 
 class Score(object):
     def __init__(self, user_inputs):
@@ -58,7 +67,7 @@ class Score(object):
                                                    Mg = self.Mg,
                                                    Tris = self.Tris,
                                                    dNTPs = self.dNTPs,
-                                                   nn_table='DNA_NN%i'%self.NN_table,
+                                                   nn_table=THERMO_TABLE[self.NN_table-1],
                                                    dnac1 = self.dnac1,
                                                    dnac2 = self.dnac2,
                                                    saltcorr = self.saltcorr)
