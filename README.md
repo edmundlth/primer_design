@@ -34,7 +34,7 @@ The program is a command-line tool which takes in the following arguments,
 * --auxfile     **Specify the name of the file recording auxiliary data**
 * --sense\_heel     **Nucleic acid string specifying the sense heel sequence**
 * --antisense\_heel     **Nucleic acid string specifying the antisense heel sequence**  
-* --tiles     **2 number specifying the minimum and maximum tile size allowed (inclusive)**  
+* --tiles     **2 numbers specifying the minimum and maximum tile size allowed (inclusive)**  
 * --primer\_length     **A number specifying the optimal primer length**  
 * --primer\_length\_var     **A number specifying the allowed variation in primer length**
 * --allowed\_overlap     **A number specifying the maximum allowed overlaping between tiles**

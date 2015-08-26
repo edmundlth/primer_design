@@ -31,9 +31,11 @@ def mean(sequence):
     else:
         return 0.0
 
-def variance(sequence):
+def std_deviation(sequence):
     if sequence:
-        return sum([x**2 for x in sequence])/ float(len(sequence))
+        x_bar = mean(sequence)
+        variance = sum([(x - x_bar)**2 for x in sequence])/ float(len(sequence))
+        return variance ** 0.5
     else:
         return 0.0
 

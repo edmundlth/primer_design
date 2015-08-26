@@ -1,10 +1,11 @@
-from utils import stability, weighted_num_complement
+from utils import weighted_num_complement
 from Bio.SeqUtils.MeltingTemp import Tm_NN, Tm_GC, Tm_Wallace
 from math import log
-
+import logging
 
 class Score(object):
     def __init__(self, user_inputs):
+        logging.info('Initialising Score object')
         self.score_func = None
         self.tm_func = None
         self.target_tm = None
@@ -21,6 +22,7 @@ class Score(object):
         self.dnac1 = None
         self.dnac2 = None
         self._handle_user_inputs(user_inputs)
+        logging.info('Finished initialising')
 
 
     def _handle_user_inputs(self, user_inputs):
