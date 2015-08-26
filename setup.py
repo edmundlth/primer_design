@@ -9,7 +9,7 @@ setup(
     author_email='elau1@students.unimelb.edu.au',
     packages=['source'],
     entry_points={
-        'console_scripts': ['primer_design = primer_design.source:main']
+        'console_scripts': ['primer_design = source.primer_design:main']
     },
     url='https://github.com/edmundlth/primer_design',
     license='LICENSE.txt',
