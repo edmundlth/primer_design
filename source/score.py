@@ -67,7 +67,7 @@ class Score(object):
                                                    Mg = self.Mg,
                                                    Tris = self.Tris,
                                                    dNTPs = self.dNTPs,
-                                                   nn_table=THERMO_TABLE[self.NN_table-1],
+                                                   nn_table=THERMO_TABLES[self.NN_table-1],
                                                    dnac1 = self.dnac1,
                                                    dnac2 = self.dnac2,
                                                    saltcorr = self.saltcorr)
