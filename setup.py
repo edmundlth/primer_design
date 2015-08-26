@@ -7,9 +7,9 @@ setup(
     version='1.0.0',
     author='Edmund Lau',
     author_email='elau1@students.unimelb.edu.au',
-    packages=['primer_design'],
+    packages=['source'],
     entry_points={
-        'console_scripts': ['primer_design = primer_design.primer_design:main']
+        'console_scripts': ['primer_design = primer_design.source:main']
     },
     url='https://github.com/edmundlth/primer_design',
     license='LICENSE.txt',
