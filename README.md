@@ -4,8 +4,7 @@ Hi-Plex Primer Design Tool
 Downloading
 -----------
 The program can be installed using pip (Python's package manager) as follow:  
-
-    `pip install https://github.com/edmundlth/primer_design` 
+`pip install https://github.com/edmundlth/primer_design`
 
 
 Example usage
