@@ -10,6 +10,7 @@ class Score(object):
         self.tm_func = None
         self.target_tm = None
         self.tm_underachieve_weight = None
+        self.NN_table = None
         self.Na = None
         self.Mg = None
         self.K = None
@@ -33,6 +34,7 @@ class Score(object):
         """
         self.target_tm = user_inputs.target_tm
         self.tm_underachieve_weight = user_inputs.tm_underachieve
+        self.NN_table = user_inputs.NN_table
         self.sense_heel = user_inputs.sense_heel.upper()
         self.antisense_heel = user_inputs.antisense_heel.upper()
 
@@ -56,6 +58,7 @@ class Score(object):
                                                    Mg = self.Mg,
                                                    Tris = self.Tris,
                                                    dNTPs = self.dNTPs,
+                                                   nn_table='DNA_NN%i'%self.NN_table,
                                                    dnac1 = self.dnac1,
                                                    dnac2 = self.dnac2,
                                                    saltcorr = self.saltcorr)

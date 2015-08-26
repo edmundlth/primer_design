@@ -222,6 +222,16 @@ def parse_args():
                         target_tm. Lower melting temperature should be score
                         harsher than higher ones, there for the value should
                         be > 1.''')
+    parser.add_argument('--NN_table', metavar='NN_TABLE',
+                        type=int, default=3,
+                        choices=range(1,5),
+                        help='''An integer specifying the nearest neighbour
+                        thermodynamic table to be used.
+                        1 -- Breslauer et al. (1986)
+                        2 -- Sugimoto et al. (1996)
+                        3 -- Allawi and SantaLucia (1997)
+                        4 -- SantaLucia & Hicks (2004)
+                        ''')
     parser.add_argument('--saltcorr', metavar="SALTCORR", type=int,
                         default=DEFAULT_SALTCORR,
                         choices=range(0,8),
