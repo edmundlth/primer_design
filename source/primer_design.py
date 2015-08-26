@@ -335,9 +335,9 @@ def primer_design(user_inputs):
 
             after_time = time.time()
             time_taken = after_time - before_time
-            print("%s %s %s"%coords)
-            print("length %i"%searcher.region_length)
-            print("Search-pick-write time: %s\n"%time_taken)
+            logging.info("%s %s %s"%coords)
+            logging.info("length %i"%searcher.region_length)
+            print("Time taken for %s %s %s: %s\n"%(coords[0],coord[1],coord[2],time_taken))
 
             # assemble aux_data
             auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
@@ -400,7 +400,6 @@ class Dp_search(object):
         logging.info('Tilling range = %s'%self.tiling_range)
         self.dp_search()
         logging.info('dp_search() ended')
-        logging.info('%s'%filter(lambda x: x!=(0,0,0,None,None),self.pos_memo))
         logging.info('%s'%len(self.primer_memo))
 
 
