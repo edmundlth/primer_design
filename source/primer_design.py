@@ -226,11 +226,11 @@ def parse_args():
                         type=int, default=3,
                         choices=range(1,5),
                         help='''An integer specifying the nearest neighbour
-                        thermodynamic table to be used.
-                        1 -- Breslauer et al. (1986)
-                        2 -- Sugimoto et al. (1996)
-                        3 -- Allawi and SantaLucia (1997)
-                        4 -- SantaLucia & Hicks (2004)
+                        thermodynamic table to be used.\n
+                        1 -- Breslauer et al. (1986)\n
+                        2 -- Sugimoto et al. (1996)\n
+                        3 -- Allawi and SantaLucia (1997)\n
+                        4 -- SantaLucia & Hicks (2004)\n
                         ''')
     parser.add_argument('--saltcorr', metavar="SALTCORR", type=int,
                         default=DEFAULT_SALTCORR,
@@ -246,16 +246,16 @@ def parse_args():
                         nargs=7, default=DEFAULT_CONC,
                         help=''' 7 floating point numbers which give the
                         the concentration of the following chemical species:
-                            - Na (in mM)
-                            - K  (in mM)
-                            - Mg (in mM)
-                            - Tris-HCl (in mM)
-                            - dNTPs (in mM)
+                            - Na (in mM)\n
+                            - K  (in mM)\n
+                            - Mg (in mM)\n
+                            - Tris-HCl (in mM)\n
+                            - dNTPs (in mM)\n
                             - dnac1 (in nM) note the nM. This is the
                                             concentration of the more abundant
-                                            DNA species (likely to be primer)
+                                            DNA species (likely to be primer)\n
                             - dnac2 (in nM) Concentration of the less abundant
-                                            DNA species.
+                                            DNA species.\n
 
                             Default to %s
                             '''%DEFAULT_CONC)
