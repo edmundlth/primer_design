@@ -506,7 +506,6 @@ class Dp_search(object):
             f_primer = (tile_start -1, this_primer_length, 'f')
             if f_primer in self.primer_memo:
                 f_scores = self.primer_memo[f_primer]
-                logging.info('Used primer_memo')
             else:
                 f_sequence = get_primer_seq(self.reference, f_primer)
                 f_scores = self.score_primer(f_sequence, direction='f')
