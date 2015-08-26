@@ -337,7 +337,7 @@ def primer_design(user_inputs):
             time_taken = after_time - before_time
             logging.info("%s %s %s"%coords)
             logging.info("length %i"%searcher.region_length)
-            print("Time taken for %s %s %s: %s\n"%(coords[0],coord[1],coord[2],time_taken))
+            print("Time taken for %s %s %s: %s\n"%(coords[0],coords[1],coords[2],time_taken))
 
             # assemble aux_data
             auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
