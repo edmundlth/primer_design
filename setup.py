@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name='primer_design',
-    version='0.0.1',
+    version='1.0.0',
     author='Edmund Lau',
     author_email='elau1@students.unimelb.edu.au',
     packages=['primer_design'],
