@@ -483,7 +483,6 @@ class Dp_search(object):
                                                best_overlap,
                                                best_f,
                                                best_r)
-            #logging.info('%s'%filter(lambda x: x != (0,0,0,None,None), self.pos_memo))
 
     def best_primers_in_tile(self, tile):
         '''
