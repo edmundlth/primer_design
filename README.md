@@ -21,7 +21,7 @@ We suggest using python virtual environment 'virtualenv' (ref: https://virtualen
 
 Example usage
 -------------
-A directory called 'example' is included in the packaged.  
+A directory called 'example' is included in the package.  
 As an example usage of the program:  
 1. (say we are currently in hiplex_dir from above)  
   `cd primer_design/example`  

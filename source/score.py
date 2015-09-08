@@ -1,3 +1,19 @@
+"""
+(This module is still under active development)
+Description:
+    This module contains the class Score which implements the scoring
+    method for measuring the goodness of a particular primer sequence
+    given the users' commandline parameters. 
+    The method will be used within the dynamic programming loop in
+    the primer_design.py module, thus the scoring is strictly 
+    a function of primer (nucleic acid sequence) to a real number, 
+    for instance,
+    primer positions and current chosen pool of primers would not affect
+    the score of a primer.
+
+"""
+
+
 from utils import weighted_num_complement
 from Bio.SeqUtils.MeltingTemp import (Tm_NN, 
                                       Tm_GC, 
@@ -9,13 +25,26 @@ from Bio.SeqUtils.MeltingTemp import (Tm_NN,
 from math import log
 import logging
 
-
+# Nearest neighbor thermodynamic data for Tm prediction
+# from a Biopython module
+# Refer to 
+# http://biopython.org/DIST/docs/api/Bio.SeqUtils.MeltingTemp-module.html
 THERMO_TABLES = [DNA_NN1, DNA_NN2, DNA_NN3, DNA_NN4]
 
 class Score(object):
+    """
+    This class handles the user inputs and produces method for primer
+    scoring. 
+    It takes in user commandline input from running primer_design,
+    extract relevant information about users' preference, specification
+    of reaction condition, and then initialise a scoring function
+    based on them. 
+    """
     def __init__(self, user_inputs):
         logging.info('Initialising Score object')
         self.score_func = None
+
+        # Initialise relevant informations for scoring 
         self.tm_func = None
         self.target_tm = None
         self.tm_underachieve_weight = None
@@ -31,8 +60,9 @@ class Score(object):
         self.gc_weight = None
         self.dnac1 = None
         self.dnac2 = None
+        # Parse user_inputs and assign them to relevant attribute
         self._handle_user_inputs(user_inputs)
-        logging.info('Finished initialising')
+        logging.info('Finished initialising Score object')
 
 
     def _handle_user_inputs(self, user_inputs):
@@ -52,13 +82,13 @@ class Score(object):
 
         self.saltcorr = user_inputs.saltcorr
         self.gc_weight = user_inputs.gc_weight
+        assert self.gc_weight >= 1.0
 
         score_choice = user_inputs.score_func
         if score_choice == 'score_Lp':
             self.score_func = self.score_Lp
         elif score_choice == 'score_linear':
             self.score_func = self.score_linear
-
 
         tm_func_choice = user_inputs.tm_func
         if tm_func_choice == "Tm_NN":
@@ -86,17 +116,29 @@ class Score(object):
 
 
     # Functions that map sequence to their relevant raw data.
-
     def raw_tm(self, seq):
+        """ Use the chosen Tm function which is aware of user specified
+        reaction conditions such as reactants concentration, 
+        salt correction method and nearest neighbour data, 
+        to predict the melting temperature of seq"""
         return self.tm_func(seq)
     
     def raw_entropy(self, seq):
+        """Calculate Shanon's entropy for seq using natural logarithm"""
         seq = seq.upper()
         length = float(len(seq))
         prob = [seq.count(base)/length for base in set(seq)]
         return - sum( p * log(p) for p in prob)
 
     def raw_max_hairpin(self, seq, direction):
+        """
+        Hairpin prediction algorithm. 
+        Currently returning just the maximum number of bond that is
+        sterically possible for seq together with its attached heel sequence.
+        Only considering 1 loop of size 3 occuring at where the sequence
+        folds onto itself.
+        GC bond is weighted more than AT bond based on user_inputs.gc_weight
+        """
         if direction == 'f':
             seq = self.sense_heel + seq
         elif direction == 'r':
@@ -106,13 +148,26 @@ class Score(object):
             raise ValueError
         length = len(seq)
         score = 0
-        for i in range(5,length):
+        loop_size = 3
+        start_index = loop_size + 2 
+        # Start at 5:
+        #           * * * * * * * * *    (Original sequence and index)
+        #           1 2 3 4 5 6 7 8 9
+
+        #             3 2 1 
+        #             * * *              (First possible loop)
+        #         4 *   | |
+        #             * * * * * 
+        #             5 6 7 8 9 
+        # Thus top = 2 1 
+        #      bottom = 6 7 8 9
+        for index in range(start_index,length):
             # only consider loop of size 3
             # smaller loop are assummed to be sterically impossible
             # and case where top and bottom with
             # only 1 bp is not considered
-            top = seq[:i-3][::-1]
-            bottom = seq[i:]
+            top = seq[:index-loop_size][::-1]
+            bottom = seq[index:]
             new_score = weighted_num_complement(top,bottom,
                                                 gc_weight = self.gc_weight)
             if new_score > score:
@@ -121,15 +176,26 @@ class Score(object):
             
 
     def raw_gc(self, seq):
+        """ 
+        Return the gc content as a fraction of gc_count/length of seq
+        """
         seq = seq.upper()
         gc_count = seq.count('G') + seq.count('C')
         return gc_count/float(len(seq))
 
     def raw_gc_clamp(self,seq):
+        """
+        Return 1 if sequence has a gc_clamp else return 0
+        """
         end_with = seq[-1].upper()
         return float(end_with == 'G' or end_with == 'C')
 
     def raw_run(self, seq):
+        """
+        Return the maximum number of run we occuring in 
+        the sequence
+        eg: raw_run(AAAGGGGGATCTATTCT) == raw_run(GGGGG) == 5
+        """
         seq = seq.upper()
         max_run = 1
         run = 1

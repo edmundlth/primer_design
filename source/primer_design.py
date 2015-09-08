@@ -147,7 +147,7 @@ DEFAULT_TARGET_TM = 64.0
 DEFAULT_TM_UNDERACHIEVE = 1.0
 DEFAULT_SALTCORR = 3
 DEFAULT_CONC = [50, 0, 0, 0, 0, 25, 25]
-DEFAULT_GC_WEIGHT = 1.5
+DEFAULT_GC_WEIGHT = 1.5pD
 DEFAULT_AUXFILE = 'auxiliary_primer_out.tsv'
 
 
@@ -178,6 +178,8 @@ def parse_args():
                         antisense heel strand''')
     parser.add_argument('--tiles', metavar="MAX_MIN_TILE_SIZE", type=int,
                         required=True, nargs=2,
+                        help=''' A pair of integers specifying the maximum
+                        and the minimum tile sizes inclusive''')
                         help=''' A pair of integers specifying the maximum
                         and the minimum tile sizes inclusive''')
     parser.add_argument('--primer_length', metavar='PRIMER_LENGTH', type=int,
@@ -285,7 +287,7 @@ def start_log(log):
 
 
 def main():
-    ''' Main() function'''
+    ''' Main function: Entry point of primer_design program'''
     #parse commandline inputs
     user_inputs = parse_args()
     start_log(user_inputs.log)
@@ -407,7 +409,7 @@ class Dp_search(object):
 
     def dp_search(self):
         """
-        This method will try all legal tiling patterns, that is:
+        This method will try all legal tiling patterns, it satisfy:
             The region is a subset of the union of the tiles
             All tiles are of the sizes specified
             All tiles has at least 1bp intersection with the region 
@@ -418,6 +420,7 @@ class Dp_search(object):
         The best scored tiling pattern for each positions are recorded
         in the pos_memo and all scored primers are recored in the
         primer_memo
+
         """
         logging.info('dp_search() started')
 
@@ -477,7 +480,7 @@ class Dp_search(object):
                                            best_overlap,
                                            best_tile_size))
             position_in_memo = pos - self.region_start + self.max_tile -1
-            logging.info('Position in memo: %s'%position_in_memo)
+            #logging.info('Position in memo: %s'%position_in_memo)
             self.pos_memo[position_in_memo] = (best_score,
                                                best_tile_size,
                                                best_overlap,
@@ -508,8 +511,8 @@ class Dp_search(object):
                 f_sequence = get_primer_seq(self.reference, f_primer)
                 f_scores = self.score_primer(f_sequence, direction='f')
                 self.primer_memo[f_primer] = f_scores
-                logging.info('new primer: %s'%str(f_primer))
-                logging.info('Size of primer memo: %s'%len(self.primer_memo))
+                #logging.info('new primer: %s'%str(f_primer))
+                #logging.info('Size of primer memo: %s'%len(self.primer_memo))
 
             # deal with reverse primer
             r_primer = (tile_end +1, this_primer_length, 'r')
@@ -519,8 +522,8 @@ class Dp_search(object):
                 r_sequence = get_primer_seq(self.reference, r_primer)
                 r_scores = self.score_primer(r_sequence, direction='r')
                 self.primer_memo[r_primer] = r_scores
-                logging.info('new primer: %s'%str(r_primer))
-                logging.info('Size of primer memo: %s'%len(self.primer_memo))
+                #logging.info('new primer: %s'%str(r_primer))
+                #logging.info('Size of primer memo: %s'%len(self.primer_memo))
 
 
             if f_scores[0] > best_f_score:
@@ -530,9 +533,12 @@ class Dp_search(object):
                 best_r_score = r_scores[0]
                 best_r = r_primer
         total_score = best_f_score + best_r_score
+        best_result = (total_score, best_f, best_r)
         logging.info('Finished choosing best primers in tile')
+        logging.info('Chosen primer:\n Score:%s\nForward:%s\nReverse:%s'
+                     %best_result)
 
-        return (total_score, best_f, best_r)
+        return best_result
 
 
 ##################
@@ -565,10 +571,7 @@ def _get_reference(fa_path, chrom):
     # This function requires that each fasta file contains
     # a single chromosome only and the file name is consitent
     # with the chromosome name (the first column of BED-file)
-    # This should be generalised to handle other situations
-    # for instance, the fasta files are with multiple chrom?
     return seq_read.seq
-
 
 def pick_primer_set(searcher):
     '''
@@ -621,7 +624,7 @@ def pick_primer_set(searcher):
 
 def write_aux(data_dic, auxfile_name):
     with open(auxfile_name,'w') as auxfile:
-        header = ['chrom', 'start', 'end', 'length', 'time_taken',
+        header = ['chrom', 'region_start', 'region_end', 'region_length', 'time_taken',
                   'mean_tile', 'num_tile','std_deviation_tile', 'mean_overlap',
                   'num_primers_scored']
         auxfile.write('\t'.join(header) + '\n')
