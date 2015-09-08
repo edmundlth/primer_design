@@ -122,6 +122,108 @@ Brief Description of the Bottom Up Dynamic Programming:
     # now that the memo is prepared
     search through memo:
        the best scored final position will be our solution
+
+
+Details of Dynamic Programming:
+    Legal tiling pattern:
+    - All tiles are of specified sizes and has at least 1 base
+      intersection with the region
+    - The union of the tiles must at least cover the region
+    - Tiles can overlap but the number of overlapping bases is at most
+      'allowed_overlap'.
+
+There are 2 memoization in this Dp, 
+    - pos_memo 
+         -> memoize, as a list, 
+            the best (score, tile size, overlap, f_primer, r_primer)
+         -> f_primer, r_primer are unique representation of the 
+            forward and reverse primer respectively in the context of a
+            reference sequence, (see 'primer' in definitions section).
+         -> Number of entry of the memo 
+             = number of bases that can possibly tiled by legal tiling
+             = region_length + 2 * (max_tile -1)
+         -> Each entry correspond to a position and will be updated
+            during the Dp so that the entry represent the best
+            tile to choose at this position given all the previous
+            position's scores while obeying legal tiling rule.
+
+    - primer_memo
+          -> memoize the processed primers and their scores as a 
+             dictionary with primers as keys and tuple of scores 
+             and primers' data as value.
+
+Example:
+    Let say we are at position P in the middle of Dp, with the
+    following reference with * representing the region and - repesenting
+    the flanking slack space.
+    The numbers below each base represent the best score as determined
+    by previous loops.
+    
+     - - - - - * * * * * * * * * - - - - -
+     1 3 3 6 8 5 7 3 6 8 9 2 1 P
+
+    Now, let tile sizes given be [2,3] and allowed_overlap=1
+    (all 'tile_score' entries below are hypothetical)
+    
+    Check 1: current best_score = 0
+         t_size = 2
+         overlap = 0
+         tile_score = 2
+         This would give total_score = 2 + previous_pos_score
+                                     = 2 + 2
+                                     = 4
+                (greater than best_score thus update best_score)
+    
+     - - - - - * * * * * * * * * - - - - -
+     1 3 3 6 8 5 7 3 6 8 9 2 1 P
+                             ^=^      # tile of size 2 overlaping p
+                      ...==^
+    Check 2: current best_score = 4
+        t_size = 2
+        overlap = 1
+        tile_score = 4
+        Total_score = 4 + 1  # The immediate previous position since
+                    = 5      # previous tile to overlap it by 1 base.
+        (update best_score)
+
+
+     - - - - - * * * * * * * * * - - - - -
+     1 3 3 6 8 5 7 3 6 8 9 2 1 P
+                             ^=^
+                      .....==^
+    
+    Check 3: current best_score = 5
+        t_size = 3
+        overlap = 0
+        tile_score = 1
+        total_score = 1 + 9 = 10 (update best_score)
+    
+     - - - - - * * * * * * * * * - - - - -
+     1 3 3 6 8 5 7 3 6 8 9 2 1 P
+                           ^===^
+                    ...==^
+
+    Check 4: current best_score = 10
+        t_size = 3
+        overlap = 1
+        tile_score = 5
+        total_score = 3 + 2   (no update needed)
+
+
+     - - - - - * * * * * * * * * - - - - -
+     1 3 3 6 8 5 7 3 6 8 9 2 1 P
+                           ^===^
+                     ....==^
+
+
+    Finish checking ...
+        best_score = 10
+        memoize best_score = 10
+                best_tile_size = 3
+                best_overlap = 0
+                best_f and best_f are determined by best_primer_in_tile()
+
+    go to next position...
 """
 from argparse import ArgumentParser
 import logging
