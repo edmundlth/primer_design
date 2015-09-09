@@ -249,7 +249,7 @@ DEFAULT_TARGET_TM = 64.0
 DEFAULT_TM_UNDERACHIEVE = 1.0
 DEFAULT_SALTCORR = 3
 DEFAULT_CONC = [50, 0, 0, 0, 0, 25, 25]
-DEFAULT_GC_WEIGHT = 1.5pD
+DEFAULT_GC_WEIGHT = 1.5
 DEFAULT_AUXFILE = 'auxiliary_primer_out.tsv'
 
 
@@ -280,8 +280,6 @@ def parse_args():
                         antisense heel strand''')
     parser.add_argument('--tiles', metavar="MAX_MIN_TILE_SIZE", type=int,
                         required=True, nargs=2,
-                        help=''' A pair of integers specifying the maximum
-                        and the minimum tile sizes inclusive''')
                         help=''' A pair of integers specifying the maximum
                         and the minimum tile sizes inclusive''')
     parser.add_argument('--primer_length', metavar='PRIMER_LENGTH', type=int,
