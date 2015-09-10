@@ -46,6 +46,7 @@ class Score(object):
 
         # Initialise relevant informations for scoring 
         self.tm_func = None
+        self.score_weights = None
         self.target_tm = None
         self.tm_underachieve_weight = None
         self.NN_table = None
@@ -73,6 +74,7 @@ class Score(object):
         """
         self.target_tm = user_inputs.target_tm
         self.tm_underachieve_weight = user_inputs.tm_underachieve
+        assert self.tm_underachieve >= 1.0
         self.NN_table = user_inputs.NN_table
         self.sense_heel = user_inputs.sense_heel.upper()
         self.antisense_heel = user_inputs.antisense_heel.upper()
@@ -85,10 +87,14 @@ class Score(object):
         assert self.gc_weight >= 1.0
 
         score_choice = user_inputs.score_func
-        if score_choice == 'score_Lp':
-            self.score_func = self.score_Lp
-        elif score_choice == 'score_linear':
-            self.score_func = self.score_linear
+        self.score_weights = user_inputs.score_weights
+#        if score_choice == 'score_Lp':
+        self.score_func = (
+                lambda seq, direction: self.score_Lp(seq, direction, p = score_choice)
+                          )
+#        elif score_choice == 'score_linear':
+#            self.score_func = self.score_linear
+#            self.linear_weights = user_inputs.linear_weights
 
         tm_func_choice = user_inputs.tm_func
         if tm_func_choice == "Tm_NN":
@@ -216,7 +222,16 @@ class Score(object):
     # Normalisation of the raw data
 
     def normalise_tm(self, tm):
-        target = self.target_tm # looking up attribute expensive?
+        """
+        Return a value between 0 - 100 as a normalised
+        score for a given tm value.
+        The further tm is from the target_tm specified by
+        user, the lower the score.
+        However, tm < target_tm is scored more harshly
+        based on user specified tm_underachieve_weight
+        which is a value >= 1.0.
+        """
+        target = self.target_tm
         tm_difference = tm - target
         lower = 20.0
         upper = 80.0
@@ -230,23 +245,46 @@ class Score(object):
             return 100
 
     def normalise_entropy(self, entropy):
-        # max entropy is log(4) = 1.386294
+        """
+        Normalise entropy to a value between 0 - 100
+        entropy is maximum when all four of ATGC
+        has equal probability of occuring, ie
+        pA = pT = pG = pC = 1/4, hence
+        max_entropy = -log(1/4) = log(4) ~= 1.386294
+        """
         return entropy * 100 / 1.386294
 
     def normalise_gc(self, gc_fraction):
+        """
+        Normalise gc_fraction to a value between
+        0-100
+        """
         return gc_fraction * 100
 
     def normalise_run(self, run, length):
+        """
+        Normalise run as a proportion of 
+        length to a value between 0 - 100
+        """
         return 100 * (1 - float(run) / length)
 
     def normalise_hairpin(self, hairpin, length, gc_fraction):
+        """
+        Normalise hairpin to a value between 0 - 100 according
+        to the fraction hairpin/ max_hairpin, where
+        max_hairpin is the hairpin value when half of the
+        sequence bind to the other half.
         # maximum_hairpin = AT is counted as 1 while GC are 
         # weighted according to user specifed gc weight
-        maximum_hairpin = length * ( gc_fraction * self.gc_weight + 
+        """
+        maximum_hairpin = 0.5 * length * ( gc_fraction * self.gc_weight + 
                                         (1 - gc_fraction))
         return 100 * (1 - hairpin / maximum_hairpin)
 
     def normalise_gc_clamp(self, gc_clamp):
+        '''
+        Return 100 is there is a gc_clamp,
+        zero otherwise'''
         return float(bool(gc_clamp)) * 100
 
 
@@ -254,6 +292,14 @@ class Score(object):
     # Scalarisation of gathered data from the sequence to get
     # a single number as the score for the sequence
     def score_Lp(self, seq, direction, p = 2):
+        """
+        Return the score of the nucleic acid sequence: seq,
+        together will all the raw values of its properties.
+        Score is calculated using the Lp-norm:
+           Score = sum( wi * ni),
+              where wi = weight of the i-th property of seq
+                    ni = normalised score of the i-th property
+        """
         p = float(p)
         length = len(seq)
         tm = self.raw_tm(seq)
@@ -263,19 +309,21 @@ class Score(object):
         gc_clamp = self. raw_gc_clamp(seq)
         run = self.raw_run(seq)
 
-        # score = (sum of of the p power of normalised scores) ** (1/p)
-        score = sum( 
-                    map( lambda x: x**p, 
-                            [self.normalise_tm(tm),
+        
+        normalised_scores = [self.normalise_tm(tm),
                             self.normalise_entropy(entropy),
                             self.normalise_hairpin(hairpin, length, gc_fraction),
                             self.normalise_gc(gc_fraction),
                             self.normalise_gc_clamp(gc_clamp),
                             self.normalise_run(run, length)]
+
+
+        # score = (sum of of the p power of normalised scores) ** (1/p)
+        score = sum( 
+                    map( lambda x: x**p,
+                         [normalised * weight
+                          for normalised, weight in 
+                          zip(normalised_scores, self.score_weights)]
                         )
                     ) ** (1/p)
         return (score, tm, entropy, hairpin, gc_fraction, gc_clamp, run)
-
-    def score_linear(self, seq):
-        pass
-

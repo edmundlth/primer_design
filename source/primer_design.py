@@ -244,7 +244,8 @@ DEFAULT_PRIMER_LENGTH = 20
 DEFAULT_PRIMER_LENGTH_VAR = 8
 DEFAULT_ALLOWED_OVERLAP = 5
 DEFAULT_TM_FUNC = 'Tm_NN'
-DEFAULT_SCORE_FUNC = 'score_Lp'
+DEFAULT_SCORE_FUNC = 1
+DEFAULT_SCORE_WEIGHTS = [1, 1, 1, 1, 1, 1]
 DEFAULT_TARGET_TM = 64.0
 DEFAULT_TM_UNDERACHIEVE = 1.0
 DEFAULT_SALTCORR = 3
@@ -300,10 +301,24 @@ def parse_args():
                         between successive tiles.
                         Defaulted to %s'''%DEFAULT_ALLOWED_OVERLAP)
     parser.add_argument('--score_func', metavar="SCORING_FUNCTION",
-                        type=str, default=DEFAULT_SCORE_FUNC,
-                        choices=['score_Lp', 'score_linear'],
-                        help=''' A string specifying the name of the
-                        scoring function to be used.''')
+                        type=float, default=DEFAULT_SCORE_FUNC,
+                        help='''A number specifying the p value in 
+                        the Lp-norm used. In particular, p=1 reduces to
+                        a linear sum. 
+                        Default to %s'''%DEFAULT_SCORE_FUNC)
+    parser.add_argument('--score_weights', metavar='WEIGHT',
+                        type=float, nargs='*',
+                        default=DEFAULT_SCORE_WEIGHTS,
+                        help='''A list of weights for scoring, 
+                        the order of the list is given by,
+                        score =   a0 * tm 
+                                + a1 * entropy
+                                + a2 * hairpin
+                                + a3 * gc_content
+                                + a4 * gc_clamp
+                                + a5 * run
+                        Default to:
+                        [a0, a1, a2, a3, a4, a5] = %s'''%DEFAULT_SCORE_WEIGHTS)
     parser.add_argument('--tm_func', metavar='TM_FUNCTION', type=str,
                         default=DEFAULT_TM_FUNC,
                         choices=['Tm_NN', 'Tm_GC', 'Tm_Wallace'],
@@ -567,7 +582,6 @@ class Dp_search(object):
                                            best_overlap,
                                            best_tile_size))
             position_in_memo = pos - self.region_start + self.max_tile -1
-            #logging.info('Position in memo: %s'%position_in_memo)
             self.pos_memo[position_in_memo] = (best_score,
                                                best_tile_size,
                                                best_overlap,
@@ -598,8 +612,6 @@ class Dp_search(object):
                 f_sequence = get_primer_seq(self.reference, f_primer)
                 f_scores = self.score_primer(f_sequence, direction='f')
                 self.primer_memo[f_primer] = f_scores
-                #logging.info('new primer: %s'%str(f_primer))
-                #logging.info('Size of primer memo: %s'%len(self.primer_memo))
 
             # deal with reverse primer
             r_primer = (tile_end +1, this_primer_length, 'r')
@@ -609,9 +621,6 @@ class Dp_search(object):
                 r_sequence = get_primer_seq(self.reference, r_primer)
                 r_scores = self.score_primer(r_sequence, direction='r')
                 self.primer_memo[r_primer] = r_scores
-                #logging.info('new primer: %s'%str(r_primer))
-                #logging.info('Size of primer memo: %s'%len(self.primer_memo))
-
 
             if f_scores[0] > best_f_score:
                 best_f_score = f_scores[0]
@@ -690,18 +699,17 @@ def pick_primer_set(searcher):
     # while we are still in the region
     # notice the definition of "region" is loosen to include
     # the overhang of the last tile
-    while abs(position) < region_size_remaining:
+    while abs(position) <= region_size_remaining:
         (pos_score, tile_size,
          overlap, f_primer, r_primer) = searcher.pos_memo[position]
+        assert searcher.pos_memo[len(searcher.pos_memo) + position] == searcher.pos_memo[position]
         yield f_primer, r_primer
-
-        #searcher.primer_set.append(f_primer)
-        #searcher.primer_set.append(r_primer)
 
         # Beware of tile_size, overlap = 0 case, an infinite loop result
         if tile_size == 0 and overlap == 0:
             logging.info("There is error and this will go into an infinite loop")
-            return
+            raise RuntimeError('''Attempt to shift by 0 position, 
+                    this will go into infinite loop''')
 
         position -= (tile_size - overlap)
         searcher.aux_data['tiles'].append(tile_size)
