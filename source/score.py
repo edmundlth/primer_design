@@ -74,7 +74,7 @@ class Score(object):
         """
         self.target_tm = user_inputs.target_tm
         self.tm_underachieve_weight = user_inputs.tm_underachieve
-        assert self.tm_underachieve >= 1.0
+        assert self.tm_underachieve_weight >= 1.0
         self.NN_table = user_inputs.NN_table
         self.sense_heel = user_inputs.sense_heel.upper()
         self.antisense_heel = user_inputs.antisense_heel.upper()
