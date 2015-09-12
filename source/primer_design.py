@@ -234,7 +234,7 @@ import csv
 
 from Bio import SeqIO
 
-from utils import rev_complement, mean, std_deviation
+from utils import regions_ref_seqs_generator, rev_complement, mean, std_deviation
 from score import Score
 ###############################################################################
 
@@ -264,6 +264,14 @@ def parse_args():
                         required=True,
                         help='''Path to the BED file specifying all the 
                         coordinates of the regions of interest ''')
+##    parser.add_argument('--merge', metavar='BOOL', type=bool,
+#                        default=True,
+#                        help='''Boolean value that specify if user wants
+#                        to get warning about regions that are too close
+#                        to chromosome's boundary and
+#                        merged regions in the bedfiles that are too 
+#                        close to each other and tile those regios instead.
+#                        ''')
     parser.add_argument('--fa', metavar='FASTA_FILE', type=str,
                         required=True,
                         help='''The path to the reference fasta files''')
@@ -414,19 +422,13 @@ def primer_design(user_inputs):
     The function that takes in the all command line parameter 
     and execute the primer design process.
     """
-    scoring = Score(user_inputs) # handle the user input regarding scoring
-    score_func = scoring.score_func # the score function that will be used
-
-    # parse bed file and return a a list in the form [(region_name, start, end)]
-    # region_name is in the format: <chrom>_<name from 3rd column in bedfile>
-    # eg: chr1_name1
-    # the name might be an empty string
-    bed_coords = handle_bedfile(user_inputs.bed)
-
-    outfile_header = ['name', 'start', 'end', 'sequence', 'length',
-                      'score', 'tm', 'entropy', 'hairpin',
-                      'gc', 'gc_clamp', 'run']
+    # handle the user input regarding scoring
+    # the score function that will be used
+    score_func = Score(user_inputs).score_func
     with open(user_inputs.outfile, 'w') as outfile:
+        outfile_header = ['name', 'start', 'end', 'sequence', 'length',
+                          'score', 'tm', 'entropy', 'hairpin',
+                          'gc', 'gc_clamp', 'run']
         out_writer = csv.writer(outfile,delimiter='\t')
         out_writer.writerow(outfile_header)
 
@@ -435,21 +437,23 @@ def primer_design(user_inputs):
         # a post process statistics is then done on it.
         auxiliary_data = {}
 
-        # Now we loop through all specified regions,
+        # Now we loop through all specified regions and their reference sequence
         # search for optimal primer set (prepare the memos),
         # pick the optimal primer set,
         # write primers and their datas to output files
-        for coords in bed_coords:
+        bedfilename = user_inputs.bed
+        for region_ref_seq in regions_ref_seqs_generator(bedfilename, user_inputs):
             before_time = time.time() # time each run
 
-            searcher = Dp_search(user_inputs, coords, score_func)
+            searcher = Dp_search(user_inputs, region_ref_seq, score_func)
             write_primer(out_writer, searcher)
             outfile.flush()
 
             after_time = time.time()
             time_taken = after_time - before_time
-            logging.info("%s %s %s"%coords)
-            logging.info("length %i"%searcher.region_length)
+            coords = region_ref_seq[0]
+            logging.info("Finished design for %s of length %i"
+                         %(str(coords), searcher.region_length))
             print("Time taken for %s %s %s: %s\n"%(coords[0],coords[1],coords[2],time_taken))
 
             # assemble aux_data
@@ -464,38 +468,42 @@ def primer_design(user_inputs):
 
 ###################################
 
+
 class Dp_search(object):
     """
-    Dp_search object initialise the 'search for best primer set'
-    process. It takes in all command-line arguments
-       *may or may not be usefull
-    , a scoring function (* see Score() class) and
-    region_coords :: (chrom, start, end), eg (chr1, 0, 100).
-
-    It initialise a class level pos_memo and primer_memo for
-    Dynamic programming purpose.
+    Dp_search creates an searcher given a region of interest,
+    a reference sequence where the region is embedded in,
+    a scoring function that maps (purely) strings of 'ATGC'
+    to scores, and user command-line input to perform 
+    a dyanmic programming search and optimisation process.
+    The process terminates and create 2 memo where the optimum
+    solution can be found by feeding the object to pick_primer_set()
+    as argument.
     """
-    def __init__(self, user_inputs, region_coords, score_func):
+    def __init__(self, user_inputs, region_and_ref_seq, score_func):
+        """
+        user_inputs :: user commandline inputs as Namespace() object
+        region_and_ref_seq :: ((chrom_name, start, end), ref_seq)
+        score_func :: function object
+        """
         self.score_primer = score_func
-
         self.min_tile, self.max_tile = user_inputs.tiles
         self.tile_sizes = [self.min_tile + extend
                            for extend in
                            range(self.max_tile - self.min_tile + 1)]
-        self.region_name, self.region_start, self.region_end = region_coords
+        self.region_coords, self.reference = region_and_ref_seq
+        (self.region_name, 
+         self.region_start, 
+         self.region_end) = self.region_coords
         self.chrom = self.region_name.split('_')[0]
-        self.region_length = self.region_end - self.region_start
-
-        self.reference = _get_reference(user_inputs.fa, self.chrom)
-
+        self.region_length = self.region_coords[2] - self.region_coords[1]
         # tiling_range is the maximum number of bases that will be
         # covered by any tiling pattern
         # this will be the number of postion needed to be memoized
         self.tiling_range = self.region_length + 2 * (self.max_tile -1)
-        self.allowed_overlap = user_inputs.allowed_overlap
         self.primer_length = user_inputs.primer_length
         self.primer_length_var = user_inputs.primer_length_var
-
+        self.allowed_overlap = user_inputs.allowed_overlap
         # position memo is a list of 5-tuple recording 
         # (score, tile size, overlap, f_primer, r_primer)
         self.pos_memo = [(0, 0, 0, None, None)
@@ -503,97 +511,94 @@ class Dp_search(object):
         self.primer_memo = {}
         self.aux_data = {'tiles':[], 'overlap':[]}
 
-        logging.info('Initialised new Dp_search object')
-        logging.info('Region name, start, end, length')
-        logging.info('%s, %s, %s, %s'
-                     %(self.region_name,
-                       self.region_start,
-                       self.region_end,
-                       self.region_length))
+        logging.info('Initialised Dp_search() for %s with length %i'
+                     %(str(self.region_coords), self.region_length))
         logging.info('Tilling range = %s'%self.tiling_range)
         self.dp_search()
-        logging.info('dp_search() ended')
-        logging.info('%s'%len(self.primer_memo))
-
-
+        logging.info('dp_search() ended with %i entries in primer_memo'
+                     %(len(self.primer_memo)))
 
 
     def dp_search(self):
         """
-        This method will try all legal tiling patterns, it satisfy:
-            The region is a subset of the union of the tiles
-            All tiles are of the sizes specified
-            All tiles has at least 1bp intersection with the region 
-            Tiles can overlap each other at most allowed_overlap bp.
-            (specified by user_inputs, see __init__)
-
-        DP memoization:
-        The best scored tiling pattern for each positions are recorded
-        in the pos_memo and all scored primers are recored in the
-        primer_memo
-
+        dp_search:
+        the bottom up DP start at the first base of the region
+        since legal tile must intersect at least 1 base
+        and it ends when even the maximum tile can only intersect by 1 base
+        Each tile is checked to ensure they intersect with then region
+        Let 
+        '*' region base
+        '-' flanking base
+        '>' forward primer base
+        '<' reverse primer base
+        '=' a tile base
+        Let 
+        max_tile = 5, 
+        max_primer_len = 4, 
+        region length = 8
+        S = start_search_index = max_primer + (max_tile -1) -1
+        E = end_search_index =  max_primer + 2*(max_tile-1) + region_len -1 
+        R = region_end_index = end_search_index - (max_tile -1)
+        p = pos = current position in the Dp loop
+        s = tile start index = p - tile size +1
+                0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5   # pos_memo indexing
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3  # ref_seq indexing 
+        > > > > - - - - * * * * * * * * - - - - < < < <
+                        S       s = = R p     E
         """
-        logging.info('dp_search() started')
-
-        # the bottom up DP start at the first base of the region
-        # since legal tile must intersect at least 1 base
-        start_search = self.region_start
-        end_search = self.region_end-1 + self.max_tile
-        # notice 0 based indexing for the end of region is self.region_end -1
-        for pos in range(start_search, end_search):
-            best_score = 0
-            best_f = None
-            best_r = None
-            best_overlap = 0
-            best_tile_size = 0
+        max_primer_len = self.primer_length + self.primer_length_var
+        start_search_index = max_primer_len + (self.max_tile -1)
+        end_search_index = (max_primer_len 
+                            + 2 * (self.max_tile -1) 
+                            + self.region_length -1)#+1 for exclusive end
+        for pos in range(start_search_index, end_search_index +1):
+            # Initialise the best_result to their null values
+            # The final best_result is the best choice 
+            # at this pos given the best choice
+            # from all previous position
+            # best_result 
+            #   = (best_score, 
+            #      best_tile, 
+            #      best_overlap, 
+            #      best_forward, 
+            #      best_reverse)
+            best_result = (0, 0, 0, None, None)
             for t_size in self.tile_sizes:
-                if pos - t_size < self.region_end: # if tile still overlap
-                    # a tile is defined as (start pos, tile size)
-                    tile = (pos - t_size +1, t_size)
-                    # select the best primer with respect to primer length
-                    # and return the sum of their scores and primers themselves.
+                region_end_index = end_search_index - (self.max_tile -1)
+                tile_start_index = pos - t_size +1
+                if tile_start_index <= region_end_index: #if still overlap
+                    tile = (tile_start_index, t_size)
+                    # select best f and r primers of this tile
                     tile_score, f_primer, r_primer = self.best_primers_in_tile(tile)
                     for overlap in range(self.allowed_overlap):
-                        # Access the score of the previous tiling in pos_memo
-                        # if this tile is chosen and take the best one,
-                        # allowing for overlap of this and previous tile
-                        # To access previous pos:
-                        # 1) bring pos back to 0 if pos is at self.region_start
-                        # 2) add self.max_tile -1 to go to current pos_memo entry
-                        # 3) shift back by t_size to get previous tiles score
-                        # 4) but allow for the overlaping.
-                        prefix_pos = pos - self.region_start \
-                                     + self.max_tile \
-                                      - t_size + overlap
-                        prefix_score = self.pos_memo[prefix_pos][0]
+                        # access the score of all the tiles before
+                        # given the choice of current tile
+                        #              p    
+                        #     **********
+                        #           -===    # t_size = 4, overlap = 1
+                        #           x       # x = prefix pos index
+                        prefix_pos = tile_start_index -1 + overlap
+                        prefix_pos_in_memo = prefix_pos - max_primer_len
+                        prefix_score = self.pos_memo[prefix_pos_in_memo][0]
                         total_score = prefix_score + tile_score
+                        if total_score > best_result[0]:
+                            best_result = (total_score,
+                                           t_size,
+                                           overlap,
+                                           f_primer,
+                                           r_primer)
+            position_in_memo = pos - max_primer_len
+            self.pos_memo[position_in_memo] = best_result
 
-                        if total_score > best_score:
-                            best_score = total_score
-                            best_f = f_primer
-                            best_r = r_primer
-                            best_overlap = overlap
-                            best_tile_size = t_size
-                            logging.info('Best score, f, r, overlap, tile_size')
-                            logging.info('%s %s %s %s %s'
-                                         %(best_score,
-                                           best_f,
-                                           best_r,
-                                           best_overlap,
-                                           best_tile_size))
-            position_in_memo = pos - self.region_start + self.max_tile -1
-            self.pos_memo[position_in_memo] = (best_score,
-                                               best_tile_size,
-                                               best_overlap,
-                                               best_f,
-                                               best_r)
+
+
 
     def best_primers_in_tile(self, tile):
         '''
         Take a tile in the reference region and look for the best
         forward and reverse primers (best with respect to their length)
         '''
-        logging.info('Start choosing best primers in tile')
+        logging.info('Start choosing best primers in tile %s'%str(tile))
         best_f_score = 0
         best_r_score = 0
         tile_start, t_size = tile
@@ -633,7 +638,6 @@ class Dp_search(object):
         logging.info('Finished choosing best primers in tile')
         logging.info('Chosen primer:\n Score:%s\nForward:%s\nReverse:%s'
                      %best_result)
-
         return best_result
 
 
