@@ -29,7 +29,7 @@ You will find the following files here:
   'example.bed' -- contain 2 BED-file formated coordinates  
   'example.fa' -- contain a sequence of DNA in fasta format  
 2. run the program in this directory using the following command-line argument:  
-  `primer_design --log example.log --bed example.bed --fa . --outfile example.tsv --sense_heel ctctctatgggcagtcggtgatt --antisense_heel ctgcgtgtctccgactcag --tiles 20 30 --primer_length 10 --primer_length_var 8 --allowed_overlap 5 --score_func score_Lp --tm_func Tm_NN --target_tm 50.0 --tm_underachieve 1.0 --NN_table 3 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc_weight 1.5 --auxfile example_aux.tsv`
+  `primer_design --log example.log --bed example.bed --fa . --outfile example.tsv --sense_heel ctctctatgggcagtcggtgatt --antisense_heel ctgcgtgtctccgactcag --tiles 20 30 --primer_length 10 --primer_length_var 8 --allowed_overlap 5 --score_func 1 --tm_func Tm_NN --target_tm 50.0 --tm_underachieve 1.0 --NN_table 3 --saltcorr 5 --conc 50 0 0 0 0 25 25 --gc_weight 1.5 --auxfile example_aux.tsv`
   
 Program Description
 --------------------
