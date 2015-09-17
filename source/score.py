@@ -14,7 +14,8 @@ Description:
 """
 
 
-from utils import weighted_num_complement
+import logging
+from math import log
 from Bio.SeqUtils.MeltingTemp import (Tm_NN, 
                                       Tm_GC, 
                                       Tm_Wallace, 
@@ -22,8 +23,7 @@ from Bio.SeqUtils.MeltingTemp import (Tm_NN,
                                       DNA_NN2, 
                                       DNA_NN3, 
                                       DNA_NN4)
-from math import log
-import logging
+from utils import weighted_num_complement
 
 # Nearest neighbor thermodynamic data for Tm prediction
 # from a Biopython module

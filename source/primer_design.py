@@ -231,11 +231,10 @@ import sys
 import os
 import time
 import csv
+from multiprocessing import Pool
 
-from Bio import SeqIO
-
-from utils import regions_ref_seqs_generator, rev_complement, mean, std_deviation
 from score import Score
+from primer_search import Dp_search, regions_ref_seqs_generator, write_primer, write_aux
 ###############################################################################
 
 DEFAULT_LOG_FILE = 'primer_design.log'
@@ -426,382 +425,65 @@ def primer_design(user_inputs):
     # the score function that will be used
     score_func = Score(user_inputs).score_func
     with open(user_inputs.outfile, 'w') as outfile:
-        outfile_header = ['name', 'start', 'end', 'sequence', 'length',
-                          'score', 'tm', 'entropy', 'hairpin',
-                          'gc', 'gc_clamp', 'run']
-        out_writer = csv.writer(outfile,delimiter='\t')
-        out_writer.writerow(outfile_header)
-
-        # initialise a auxiliary data dictionary that will collect data
-        # from each run which will be written into an auxiliary file
-        # a post process statistics is then done on it.
-        auxiliary_data = {}
-
-        # Now we loop through all specified regions and their reference sequence
-        # search for optimal primer set (prepare the memos),
-        # pick the optimal primer set,
-        # write primers and their datas to output files
-        bedfilename = user_inputs.bed
-        for region_ref_seq in regions_ref_seqs_generator(bedfilename, user_inputs):
-            before_time = time.time() # time each run
-
-            searcher = Dp_search(user_inputs, region_ref_seq, score_func)
-            write_primer(out_writer, searcher)
-            outfile.flush()
-
-            after_time = time.time()
-            time_taken = after_time - before_time
-            coords = region_ref_seq[0]
-            logging.info("Finished design for %s of length %i"
-                         %(str(coords), searcher.region_length))
-            print("Time taken for %s %s %s: %s\n"%(coords[0],coords[1],coords[2],time_taken))
-
-            # assemble aux_data
-            auxiliary_data[coords] = [list(searcher.aux_data['tiles']),
-                                      list(searcher.aux_data['overlap']),
-                                      searcher.region_length, time_taken,
-                                      len(searcher.primer_memo)]
-
-        # The primer design process is now completed
-        # write auxiliary data into auxfile
-        write_aux(auxiliary_data, user_inputs.auxfile)
-
-###################################
+        with open(user_inputs.auxfile, 'w') as auxfile:
+            aux_header = header = ['chrom', 'region_start', 'region_end', 
+                                   'region_length', 'time_taken', 
+                                   'mean_tile', 'num_tile',
+                                   'std_deviation_tile', 'mean_overlap',
+                                   'num_primers_scored']
+            outfile_header = ['name', 'start', 'end', 'sequence', 'length',
+                              'score', 'tm', 'entropy', 'hairpin',
+                              'gc', 'gc_clamp', 'run']
+            out_writer = csv.writer(outfile,delimiter='\t')
+            aux_writer = csv.writer(auxfile, delimiter='\t')
+            out_writer.writerow(outfile_header)
+            aux_writer.writerow(aux_header)
 
 
-class Dp_search(object):
-    """
-    Dp_search creates an searcher given a region of interest,
-    a reference sequence where the region is embedded in,
-    a scoring function that maps (purely) strings of 'ATGC'
-    to scores, and user command-line input to perform 
-    a dyanmic programming search and optimisation process.
-    The process terminates and create 2 memo where the optimum
-    solution can be found by feeding the object to pick_primer_set()
-    as argument.
-    """
-    def __init__(self, user_inputs, region_and_ref_seq, score_func):
-        """
-        user_inputs :: user commandline inputs as Namespace() object
-        region_and_ref_seq :: ((chrom_name, start, end), ref_seq)
-        score_func :: function object
-        """
-        self.score_primer = score_func
-        self.min_tile, self.max_tile = user_inputs.tiles
-        self.tile_sizes = [self.min_tile + extend
-                           for extend in
-                           range(self.max_tile - self.min_tile + 1)]
-        self.region_coords, self.reference = region_and_ref_seq
-        (self.region_name, 
-         self.region_start, 
-         self.region_end) = self.region_coords
-        self.chrom = self.region_name.split('_')[0]
-        self.region_length = self.region_coords[2] - self.region_coords[1]
-        # tiling_range is the maximum number of bases that will be
-        # covered by any tiling pattern
-        # this will be the number of postion needed to be memoized
-        self.tiling_range = self.region_length + 2 * (self.max_tile -1)
-        self.primer_length = user_inputs.primer_length
-        self.primer_length_var = user_inputs.primer_length_var
-        self.allowed_overlap = user_inputs.allowed_overlap
-        # position memo is a list of 5-tuple recording 
-        # (score, tile size, overlap, f_primer, r_primer)
-        self.pos_memo = [(0, 0, 0, None, None)
-                         for index in range(self.tiling_range)]
-        self.primer_memo = {}
-        self.aux_data = {'tiles':[], 'overlap':[]}
+            # Now we loop through all specified regions and their reference sequence
+            # search for optimal primer set (prepare the memos),
+            # pick the optimal primer set,
+            # write primers and their datas to output files
+            bedfilename = user_inputs.bed
+            # use parallel processing to design primers for independent regions
+            process = lambda region_ref_seq : process_region(region_ref_seq, 
+                                                            user_inputs, 
+                                                            score_func)
+            #multi = Pool(2)
+            #print("hello")
+            processed = map(process, regions_ref_seqs_generator(bedfilename,
+                                                                      user_inputs))
+            map(lambda searcher: write_primer(out_writer, searcher), processed)
+            map(lambda searcher: write_aux(aux_writer, searcher), processed)
+            
 
-        logging.info('Initialised Dp_search() for %s with length %i'
-                     %(str(self.region_coords), self.region_length))
-        logging.info('Tilling range = %s'%self.tiling_range)
-        self.dp_search()
-        logging.info('dp_search() ended with %i entries in primer_memo'
-                     %(len(self.primer_memo)))
+            # The primer design process is now completed
+    #        # write auxiliary data into auxfile
+    #        # initialise a auxiliary data dictionary that will collect data
+    #        # from each run which will be written into an auxiliary file
+    #        # a post process statistics is then done on it.
+    #        auxiliary_data = {}
+    #        # assemble aux_data
+    #        for aux_data in processed:
+    #            auxiliary_data[coords]
+    #            auxiliary_data[coords] = [list(aux_data['tiles']),
+    #                                      list(aux_data['overlap']),
+    #                                      searcher.region_length, time_taken,
+    #                                      len(searcher.primer_memo)]
+    #        write_aux(auxiliary_data, user_inputs.auxfile)
+def process_region(region_ref_seq, user_inputs, score_func):
+    searcher = Dp_search(user_inputs, region_ref_seq, score_func)
+    #write_primer(out_writer, searcher)
+    
+    coords = region_ref_seq[0]
+    #write_aux(aux_writer, searcher)
+    sys.stderr.write(
+                     "Time taken for %s %s %s with length %s : %s\n"
+                     %(coords[0],coords[1],coords[2], 
+                       searcher.region_length, searcher.time_taken)
+                    )
+    return searcher
 
-
-    def dp_search(self):
-        """
-        dp_search:
-        the bottom up DP start at the first base of the region
-        since legal tile must intersect at least 1 base
-        and it ends when even the maximum tile can only intersect by 1 base
-        Each tile is checked to ensure they intersect with then region
-        Let 
-        '*' region base
-        '-' flanking base
-        '>' forward primer base
-        '<' reverse primer base
-        '=' a tile base
-        Let 
-        max_tile = 5, 
-        max_primer_len = 4, 
-        region length = 8
-        S = start_search_index = max_primer + (max_tile -1) -1
-        E = end_search_index =  max_primer + 2*(max_tile-1) + region_len -1 
-        R = region_end_index = end_search_index - (max_tile -1)
-        p = pos = current position in the Dp loop
-        s = tile start index = p - tile size +1
-                0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5   # pos_memo indexing
-        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3  # ref_seq indexing 
-        > > > > - - - - * * * * * * * * - - - - < < < <
-                        S       s = = R p     E
-        """
-        max_primer_len = self.primer_length + self.primer_length_var
-        start_search_index = max_primer_len + (self.max_tile -1)
-        end_search_index = (max_primer_len 
-                            + 2 * (self.max_tile -1) 
-                            + self.region_length -1)#+1 for exclusive end
-        for pos in range(start_search_index, end_search_index +1):
-            # Initialise the best_result to their null values
-            # The final best_result is the best choice 
-            # at this pos given the best choice
-            # from all previous position
-            # best_result 
-            #   = (best_score, 
-            #      best_tile, 
-            #      best_overlap, 
-            #      best_forward, 
-            #      best_reverse)
-            best_result = (0, 0, 0, None, None)
-            for t_size in self.tile_sizes:
-                region_end_index = end_search_index - (self.max_tile -1)
-                tile_start_index = pos - t_size +1
-                if tile_start_index <= region_end_index: #if still overlap
-                    tile = (tile_start_index, t_size)
-                    # select best f and r primers of this tile
-                    tile_score, f_primer, r_primer = self.best_primers_in_tile(tile)
-                    for overlap in range(self.allowed_overlap):
-                        # access the score of all the tiles before
-                        # given the choice of current tile
-                        #              p    
-                        #     **********
-                        #           -===    # t_size = 4, overlap = 1
-                        #           x       # x = prefix pos index
-                        prefix_pos = tile_start_index -1 + overlap
-                        prefix_pos_in_memo = prefix_pos - max_primer_len
-                        prefix_score = self.pos_memo[prefix_pos_in_memo][0]
-                        total_score = prefix_score + tile_score
-                        if total_score > best_result[0]:
-                            best_result = (total_score,
-                                           t_size,
-                                           overlap,
-                                           f_primer,
-                                           r_primer)
-            position_in_memo = pos - max_primer_len
-            self.pos_memo[position_in_memo] = best_result
-
-
-
-
-    def best_primers_in_tile(self, tile):
-        '''
-        Take a tile in the reference region and look for the best
-        forward and reverse primers (best with respect to their length)
-        '''
-        logging.info('Start choosing best primers in tile %s'%str(tile))
-        best_f_score = 0
-        best_r_score = 0
-        tile_start, t_size = tile
-        tile_end = tile_start + t_size -1
-        var = self.primer_length_var
-        primer_length = self.primer_length
-
-
-        for vary in range(-var, var +1):
-            this_primer_length = primer_length + vary
-            # deal with forward primer
-            f_primer = (tile_start -1, this_primer_length, 'f')
-            if f_primer in self.primer_memo:
-                f_scores = self.primer_memo[f_primer]
-            else:
-                f_sequence = get_primer_seq(self.reference, f_primer)
-                f_scores = self.score_primer(f_sequence, direction='f')
-                self.primer_memo[f_primer] = f_scores
-
-            # deal with reverse primer
-            r_primer = (tile_end +1, this_primer_length, 'r')
-            if r_primer in self.primer_memo:
-                r_scores = self.primer_memo[r_primer]
-            else:
-                r_sequence = get_primer_seq(self.reference, r_primer)
-                r_scores = self.score_primer(r_sequence, direction='r')
-                self.primer_memo[r_primer] = r_scores
-
-            if f_scores[0] > best_f_score:
-                best_f_score = f_scores[0]
-                best_f = f_primer
-            if r_scores[0] > best_r_score:
-                best_r_score = r_scores[0]
-                best_r = r_primer
-        total_score = best_f_score + best_r_score
-        best_result = (total_score, best_f, best_r)
-        logging.info('Finished choosing best primers in tile')
-        logging.info('Chosen primer:\n Score:%s\nForward:%s\nReverse:%s'
-                     %best_result)
-        return best_result
-
-
-##################
-
-def get_primer_seq(reference, primer_specification):
-    '''
-    Return the sequence of primer from the reference based
-    on its specification.
-
-    primer_specification : (3' position, length, direction)
-    '''
-    three_prime_pos, length, direction = primer_specification
-    if direction == 'f':
-        return reference[three_prime_pos - length+1: three_prime_pos +1]
-    elif direction == 'r':
-        seq = reference[three_prime_pos: three_prime_pos + length]
-        # return the reverse complement if the primer is a reverse primer
-        return rev_complement(seq)
-
-
-def _get_reference(fa_path, chrom):
-    """
-    Intended as a function used when initialising the Dp_search class.
-    (see __init__) It returns the whole sequence of chromosome
-    of concern in this Dp_search object
-    """
-    file_path = os.path.join(fa_path, chrom + '.fa')
-    seq_read = SeqIO.read(file_path, 'fasta')
-
-    # This function requires that each fasta file contains
-    # a single chromosome only and the file name is consitent
-    # with the chromosome name (the first column of BED-file)
-    return seq_read.seq
-
-def pick_primer_set(searcher):
-    '''
-    Look through starting from the end of pos_memo, pick the best scored
-    "starting position" and then trace back using the tile_size and overlap
-    chosen at each position to recover the optimal primer set.
-
-    '''
-    if not filter(lambda x: x != (0,0,0, None, None),searcher.pos_memo):
-        logging.info('Warning the search has not been done')
-        return
-    # look from the end of pos_memo until it hits
-    # the end of the region and determine the best starting position
-    best_reverse_start = None # this will be a negative integer
-    best_start_score = 0
-    for pos in range(-1, -searcher.max_tile -1, -1):
-        pos_info = searcher.pos_memo[pos]
-        pos_score = pos_info[0]
-        if pos_score > best_start_score:
-            best_start_score = pos_score
-            best_reverse_start = pos
-
-    region_size_remaining = searcher.region_length \
-                            + searcher.max_tile -1\
-                            #+ best_reverse_start
-                             # reverse_start is negative
-
-    position = best_reverse_start
-    # while we are still in the region
-    # notice the definition of "region" is loosen to include
-    # the overhang of the last tile
-    while abs(position) <= region_size_remaining:
-        (pos_score, tile_size,
-         overlap, f_primer, r_primer) = searcher.pos_memo[position]
-        assert searcher.pos_memo[len(searcher.pos_memo) + position] == searcher.pos_memo[position]
-        yield f_primer, r_primer
-
-        # Beware of tile_size, overlap = 0 case, an infinite loop result
-        if tile_size == 0 and overlap == 0:
-            logging.info("There is error and this will go into an infinite loop")
-            raise RuntimeError('''Attempt to shift by 0 position, 
-                    this will go into infinite loop''')
-
-        position -= (tile_size - overlap)
-        searcher.aux_data['tiles'].append(tile_size)
-        searcher.aux_data['overlap'].append(overlap)
-
-
-
-def write_aux(data_dic, auxfile_name):
-    with open(auxfile_name,'w') as auxfile:
-        header = ['chrom', 'region_start', 'region_end', 'region_length', 'time_taken',
-                  'mean_tile', 'num_tile','std_deviation_tile', 'mean_overlap',
-                  'num_primers_scored']
-        auxfile.write('\t'.join(header) + '\n')
-        for coords, data in data_dic.items():
-            chrom, start, end = coords
-            tiles, overlap, length, time_taken, num_primers = data
-            output = map(str,
-                            [chrom, start, end, length, time_taken,
-                            mean(tiles), len(tiles), std_deviation(tiles),
-                            mean(overlap), num_primers]
-                        )
-            auxfile.write('\t'.join(output) + '\n')
-
-
-def write_primer(out_writer, searcher):
-    '''
-    This function take in a Dp_search object, and a csv.writer
-    object and write all the primers generated by 
-    pick_primer_set() (a generator that yields a pair
-    of forward and reverse primers together with their data) 
-    to file.
-    '''
-    region_start = searcher.region_start
-    region_length = searcher.region_length
-    tile_number = 0
-    for f_primer, r_primer in pick_primer_set(searcher):
-        tile_number += 1
-        f_3_prime, f_length, f_dir = f_primer
-        r_3_prime, r_length, r_dir = r_primer
-        # using BED file, 0-based open-ended indexing on 
-        # the sense strand of DNA
-        f_start = f_3_prime - f_length + 1
-        f_end = f_3_prime + 1
-        r_start = r_3_prime
-        r_end = r_3_prime + f_length
-
-        f_seq = get_primer_seq(searcher.reference, f_primer)
-        r_seq = get_primer_seq(searcher.reference, r_primer)
-
-        f_score_data = map(str, searcher.primer_memo[f_primer])
-        r_score_data = map(str, searcher.primer_memo[r_primer])
-
-        basic_name = searcher.region_name + '_' \
-                     + str(region_start) + '_' \
-                     + str(region_length) + '_'
-
-        f_name = basic_name + f_dir + str(tile_number)
-        r_name = basic_name + r_dir + str(tile_number)
-
-        f_output = [f_name] \
-                   + map(str, [f_start, f_end, f_seq, f_length]) \
-                   + f_score_data
-
-        r_output = [r_name] \
-                   + map(str, [r_start, r_end, r_seq, r_length]) \
-                   + r_score_data
-
-        map(out_writer.writerow, [f_output, r_output])
-    logging.info("Finish writing primers of %s %s %s to file"
-                  %(searcher.region_name, 
-                    searcher.region_start, 
-                    searcher.region_end))
-
-
-def handle_bedfile(bedfile):
-    file = open(bedfile)
-    reader = csv.reader(file,delimiter='\t')
-    bed_row = []
-    for line in reader:
-        chromo, start, end, name = line 
-        start, end = map(int, [start, end])
-        # we dont want underscore character in the bed specified naming
-        # to interfere with our own naming convention
-        bed_specified_name = name.split(',')[0].replace('_','')
-        region_name = chromo + '_' + bed_specified_name 
-        # last term is potentially [''], ie a list of single empty string
-        bed_row.append((region_name, start, end))
-    return bed_row
 
 if __name__ == '__main__':
     main()
