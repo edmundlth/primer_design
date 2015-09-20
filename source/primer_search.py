@@ -45,8 +45,8 @@ class Dp_search(object):
         self.primer_length_var = user_inputs.primer_length_var
         self.allowed_overlap = user_inputs.allowed_overlap
         # position memo is a list of 5-tuple recording 
-        # (score, tile size, overlap, f_primer, r_primer)
-        self.pos_memo = [(0, 0, 0, None, None)
+        # (score, tile size, overlap, tile_count, f_primer, r_primer)
+        self.pos_memo = [(0, 0, 0, 0, None, None)
                          for index in range(self.tiling_range)]
         self.primer_memo = {}
         self.aux_data = {'tiles':[], 'overlap':[]}
@@ -92,7 +92,7 @@ class Dp_search(object):
         start_search_index = max_primer_len + (self.max_tile -1)
         end_search_index = (max_primer_len 
                             + 2 * (self.max_tile -1) 
-                            + self.region_length -1)#+1 for exclusive end
+                            + self.region_length -1) #+1 for exclusive end
         for pos in range(start_search_index, end_search_index +1):
             # Initialise the best_result to their null values
             # The final best_result is the best choice 
@@ -102,9 +102,10 @@ class Dp_search(object):
             #   = (best_score, 
             #      best_tile, 
             #      best_overlap, 
+            #      tile_count for this solution starting at this pos, 
             #      best_forward, 
             #      best_reverse)
-            best_result = (0, 0, 0, None, None)
+            best_result = (0, 0, 0, 0, None, None)
             for t_size in self.tile_sizes:
                 region_end_index = end_search_index - (self.max_tile -1)
                 tile_start_index = pos - t_size +1
@@ -122,11 +123,14 @@ class Dp_search(object):
                         prefix_pos = tile_start_index -1 + overlap
                         prefix_pos_in_memo = prefix_pos - max_primer_len
                         prefix_score = self.pos_memo[prefix_pos_in_memo][0]
-                        total_score = prefix_score + tile_score
+                        prefix_tile_count = self.pos_memo[prefix_pos_in_memo][3]
+                        total_score = prefix_score + tile_score 
+                        tile_count = prefix_tile_count +1
                         if total_score > best_result[0]:
                             best_result = (total_score,
                                            t_size,
                                            overlap,
+                                           tile_count,
                                            f_primer,
                                            r_primer)
             position_in_memo = pos - max_primer_len
@@ -178,8 +182,8 @@ class Dp_search(object):
         total_score = best_f_score + best_r_score
         best_result = (total_score, best_f, best_r)
         logging.info('Finished choosing best primers in tile')
-        logging.info('Chosen primer:\n Score:%s\nForward:%s\nReverse:%s'
-                     %best_result)
+        logging.info('Chosen primer at tile %s Score:%s Forward:%s Reverse:%s'
+                     %(str(tile), best_result[0], best_result[1], best_result[2])
         return best_result
 
 
@@ -215,14 +219,15 @@ def _get_reference(fa_path, chrom):
     # with the chromosome name (the first column of BED-file)
     return seq_read.seq
 
-def pick_primer_set(searcher):
+
+def pick_primer_set(searcher, score_correction_exponent):
     '''
     Look through starting from the end of pos_memo, pick the best scored
     "starting position" and then trace back using the tile_size and overlap
     chosen at each position to recover the optimal primer set.
 
     '''
-    if not filter(lambda x: x != (0,0,0, None, None),searcher.pos_memo):
+    if not filter(lambda x: x != (0, 0, 0, 0, None, None), searcher.pos_memo):
         logging.info('Warning the search has not been done')
         return
     # look from the end of pos_memo until it hits
@@ -231,10 +236,15 @@ def pick_primer_set(searcher):
     best_start_score = 0
     for pos in range(-1, -searcher.max_tile -1, -1):
         pos_info = searcher.pos_memo[pos]
-        pos_score = pos_info[0]
-        if pos_score > best_start_score:
-            best_start_score = pos_score
+        pos_score, pos_tile_count = pos_info[0], pos_info[3]
+        adjusted_score = adjust_score(pos_score, pos_tile_count, score_correction_exponent)
+        if adjusted_score > best_start_score:
+            best_start_score = adjusted_score
             best_reverse_start = pos
+            sys.stderr.write('pos:%s, tile: %s, score: %s, avg: %s\n'
+                    %(pos, pos_tile_count, pos_score, adjusted_score))
+    sys.stderr.write('region_len:%s, best_start_score: %s, best_pos: %s\n\n'
+            %(searcher.region_length, best_start_score, best_reverse_start))
 
     region_size_remaining = searcher.region_length \
                             + searcher.max_tile -1\
@@ -247,7 +257,7 @@ def pick_primer_set(searcher):
     # the overhang of the last tile
     while abs(position) <= region_size_remaining:
         (pos_score, tile_size,
-         overlap, f_primer, r_primer) = searcher.pos_memo[position]
+         overlap, tile_count, f_primer, r_primer) = searcher.pos_memo[position]
         assert searcher.pos_memo[len(searcher.pos_memo) + position] == searcher.pos_memo[position]
         yield f_primer, r_primer
 
@@ -263,7 +273,20 @@ def pick_primer_set(searcher):
 
 
 
+def adjust_score(score, tile_count, exponent = 1):
+    """
+    Adjust total score of a tiling pattern by the number 
+    of tiles it has so that the algorithm would not be 
+    biased towards having more tiles.
+    """
+    return score / (float(tile_count) ** exponent)
+
 def write_aux(aux_writer, searcher):
+    """
+    This functions takes a Dp_search object write
+    the auxiliary information to a file 
+    via a specified csv.writer object
+    """
     tiles = searcher.aux_data['tiles']
     overlap = searcher.aux_data['overlap']
     num_primers = len(searcher.primer_memo)
@@ -275,7 +298,7 @@ def write_aux(aux_writer, searcher):
     aux_writer.writerow(output)
 
 
-def write_primer(out_writer, searcher):
+def write_primer(out_writer, searcher, score_correction_exponent):
     '''
     This function take in a Dp_search object, and a csv.writer
     object and write all the primers generated by 
@@ -286,7 +309,7 @@ def write_primer(out_writer, searcher):
     region_start = searcher.region_start
     region_length = searcher.region_length
     tile_number = 0
-    for f_primer, r_primer in pick_primer_set(searcher):
+    for f_primer, r_primer in pick_primer_set(searcher, score_correction_exponent):
         tile_number += 1
         f_3_prime, f_length, f_dir = f_primer
         r_3_prime, r_length, r_dir = r_primer

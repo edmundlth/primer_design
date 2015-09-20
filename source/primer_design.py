@@ -241,10 +241,11 @@ DEFAULT_LOG_FILE = 'primer_design.log'
 DEFAULT_OUTFILE = 'primer_out.tsv'
 DEFAULT_PRIMER_LENGTH = 20
 DEFAULT_PRIMER_LENGTH_VAR = 8
-DEFAULT_ALLOWED_OVERLAP = 5
+DEFAULT_ALLOWED_OVERLAP = 10
 DEFAULT_TM_FUNC = 'Tm_NN'
-DEFAULT_SCORE_FUNC = 1
-DEFAULT_SCORE_WEIGHTS = [1, 1, 1, 1, 1, 1]
+DEFAULT_SCORE_FUNC = 1      # this is the p-value in the Lp-norm
+DEFAULT_SCORE_WEIGHTS = [1, 1, 1, 1, 1, 1]    # default to no weighting
+DEFAULT_ADJUST_SCORE = 1.0   # this is the exponent in Score/numtile^exponent
 DEFAULT_TARGET_TM = 64.0
 DEFAULT_TM_UNDERACHIEVE = 1.0
 DEFAULT_SALTCORR = 3
@@ -307,8 +308,9 @@ def parse_args():
                         help='''An integer specifying the allowed overlaping
                         between successive tiles.
                         Defaulted to %s'''%DEFAULT_ALLOWED_OVERLAP)
-    parser.add_argument('--score_func', metavar="SCORING_FUNCTION",
-                        type=float, default=DEFAULT_SCORE_FUNC,
+    parser.add_argument('--score_func', metavar='P_NORM_VAL',
+                        type=int, default=DEFAULT_SCORE_FUNC,
+                        choice=[1,2],
                         help='''A number specifying the p value in 
                         the Lp-norm used. In particular, p=1 reduces to
                         a linear sum. 
@@ -326,6 +328,14 @@ def parse_args():
                                 + a5 * run
                         Default to:
                         [a0, a1, a2, a3, a4, a5] = %s'''%DEFAULT_SCORE_WEIGHTS)
+    parser.add_argument('--adjust_score', metavar='EXPONENT', type=float,
+                        default=DEFAULT_ADJUST_SCORE,
+                        help='''The exponent, e, in the formula,
+                        adjusted_score = score / (tile_count)^e.
+                        This is correction is added so that the algorithm
+                        will not bias towards high tile count since 
+                        'score' is additive.
+                        Default to %s'''%DEFAULT_ADJUST_SCORE)
     parser.add_argument('--tm_func', metavar='TM_FUNCTION', type=str,
                         default=DEFAULT_TM_FUNC,
                         choices=['Tm_NN', 'Tm_GC', 'Tm_Wallace'],
@@ -428,7 +438,7 @@ def primer_design(user_inputs):
         with open(user_inputs.auxfile, 'w') as auxfile:
             aux_header = header = ['chrom', 'region_start', 'region_end', 
                                    'region_length', 'time_taken', 
-                                   'mean_tile', 'num_tile',
+                                   'mean_tile', 'tile_count',
                                    'std_deviation_tile', 'mean_overlap',
                                    'num_primers_scored']
             outfile_header = ['name', 'start', 'end', 'sequence', 'length',
@@ -445,32 +455,20 @@ def primer_design(user_inputs):
             # pick the optimal primer set,
             # write primers and their datas to output files
             bedfilename = user_inputs.bed
+            correction_exponent = user_inputs.adjust_score
             # use parallel processing to design primers for independent regions
             process = lambda region_ref_seq : process_region(region_ref_seq, 
                                                             user_inputs, 
                                                             score_func)
             #multi = Pool(2)
-            #print("hello")
+            # This will become multiprocess.map when the pickling has been handled
             processed = map(process, regions_ref_seqs_generator(bedfilename,
                                                                       user_inputs))
-            map(lambda searcher: write_primer(out_writer, searcher), processed)
+            map(lambda searcher: write_primer(out_writer, searcher, correction_exponent),
+                processed)
             map(lambda searcher: write_aux(aux_writer, searcher), processed)
             
 
-            # The primer design process is now completed
-    #        # write auxiliary data into auxfile
-    #        # initialise a auxiliary data dictionary that will collect data
-    #        # from each run which will be written into an auxiliary file
-    #        # a post process statistics is then done on it.
-    #        auxiliary_data = {}
-    #        # assemble aux_data
-    #        for aux_data in processed:
-    #            auxiliary_data[coords]
-    #            auxiliary_data[coords] = [list(aux_data['tiles']),
-    #                                      list(aux_data['overlap']),
-    #                                      searcher.region_length, time_taken,
-    #                                      len(searcher.primer_memo)]
-    #        write_aux(auxiliary_data, user_inputs.auxfile)
 def process_region(region_ref_seq, user_inputs, score_func):
     searcher = Dp_search(user_inputs, region_ref_seq, score_func)
     #write_primer(out_writer, searcher)
