@@ -41,7 +41,6 @@ class Score(object):
     based on them. 
     """
     def __init__(self, user_inputs):
-        logging.info('Initialising Score object')
         self.score_func = None
 
         # Initialise relevant informations for scoring 

@@ -264,14 +264,14 @@ def parse_args():
                         required=True,
                         help='''Path to the BED file specifying all the 
                         coordinates of the regions of interest ''')
-##    parser.add_argument('--merge', metavar='BOOL', type=bool,
-#                        default=True,
-#                        help='''Boolean value that specify if user wants
-#                        to get warning about regions that are too close
-#                        to chromosome's boundary and
-#                        merged regions in the bedfiles that are too 
-#                        close to each other and tile those regios instead.
-#                        ''')
+    parser.add_argument('--merge', metavar='BOOL', type=bool,
+                        default=True,
+                        help='''Boolean value that specify if user wants
+                        to get warning about regions that are too close
+                        to chromosome's boundary and
+                        merged regions in the bedfiles that are too 
+                        close to each other and tile those regios instead.
+                        ''')
     parser.add_argument('--fa', metavar='FASTA_FILE', type=str,
                         required=True,
                         help='''The path to the reference fasta files''')
@@ -310,7 +310,7 @@ def parse_args():
                         Defaulted to %s'''%DEFAULT_ALLOWED_OVERLAP)
     parser.add_argument('--score_func', metavar='P_NORM_VAL',
                         type=int, default=DEFAULT_SCORE_FUNC,
-                        choice=[1,2],
+                        choices=[1,2],
                         help='''A number specifying the p value in 
                         the Lp-norm used. In particular, p=1 reduces to
                         a linear sum. 
@@ -472,6 +472,8 @@ def primer_design(user_inputs):
 def process_region(region_ref_seq, user_inputs, score_func):
     searcher = Dp_search(user_inputs, region_ref_seq, score_func)
     #write_primer(out_writer, searcher)
+    # !!! This has been removed so that the writing occur after 
+    # !!! all the search are done for parallisation
     
     coords = region_ref_seq[0]
     #write_aux(aux_writer, searcher)
