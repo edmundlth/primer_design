@@ -239,6 +239,8 @@ from primer_search import Dp_search, regions_ref_seqs_generator, write_primer, w
 
 DEFAULT_LOG_FILE = 'primer_design.log'
 DEFAULT_OUTFILE = 'primer_out.tsv'
+DEFAULT_MERGE = True
+DEFAULT_FILTER_SMALL = True
 DEFAULT_PRIMER_LENGTH = 20
 DEFAULT_PRIMER_LENGTH_VAR = 8
 DEFAULT_ALLOWED_OVERLAP = 10
@@ -265,13 +267,19 @@ def parse_args():
                         help='''Path to the BED file specifying all the 
                         coordinates of the regions of interest ''')
     parser.add_argument('--merge', metavar='BOOL', type=bool,
-                        default=True,
+                        default=DEFAULT_MERGE,
                         help='''Boolean value that specify if user wants
                         to get warning about regions that are too close
                         to chromosome's boundary and
                         merged regions in the bedfiles that are too 
                         close to each other and tile those regios instead.
-                        ''')
+                        Defaulted to %s'''%DEFAULT_MERGE)
+    parser.add_argument('--filter_small', metavar='BOOL', type=bool,
+                        default=DEFAULT_FILTER_SMALL,
+                        help='''Boolean value that specify if user wants
+                        to filter out regions that are smaller than the 
+                        maximum tile size, Defaulted to %s'''
+                        %DEFAULT_FILTER_SMALL)
     parser.add_argument('--fa', metavar='FASTA_FILE', type=str,
                         required=True,
                         help='''The path to the reference fasta files''')

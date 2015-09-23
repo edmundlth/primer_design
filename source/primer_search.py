@@ -358,6 +358,7 @@ def regions_ref_seqs_generator(bedfile, user_inputs):
     eg : ((chr16_PALB2, 12345, 12357), ATTGCATGGCGT)
     """
     want_merging = user_inputs.merge
+    filter_small = user_inputs.filter_small
     max_tile = user_inputs.tiles[1]
     max_primer_len = user_inputs.primer_length + user_inputs.primer_length_var
     fa_path = user_inputs.fa
@@ -373,6 +374,19 @@ def regions_ref_seqs_generator(bedfile, user_inputs):
         for chrom, merged in merged_regions.items():
             filtered_regions[chrom].extend(merged)
         sys.stderr.write('Finished merging')
+    if filter_small:
+        how_small = int(0.5 * max_tile)
+        (filtered_regions,
+                small_regions) = filter_small_regions(filtered_regions, how_small)
+        sys.stderr.write("Regions that are smaller than %i\n"%how_small)
+        for chrom, regions in small_regions.items():
+            sys.stderr.write("%s filtered %i regions, lengths: %s\n"
+                             %(chrom, len(regions), str(map(_region_len,regions))))
+        total_filtered = sum(len(regions) for chrom, regions in small_regions.items())
+        total_left = sum(len(regions) for chrom, region in filtered_regions.items())
+        total = total_filtered + total_left
+        sys.stderr.write('filtered %i out of %i, percentage = %.1f\n'
+                         %(total_filtered, total, total_filtered/float(total)))
 
     (regions_and_ref_seqs,
      boundary_regions) = get_all_ref_seq(filtered_regions, max_tile, max_primer_len, fa_path)
@@ -420,8 +434,27 @@ def obtain_regions(bedfile):
                 region_dict[chrom] = [(region_name, start, end)]
     return region_dict
 
+def filter_small_regions(region_dict, min_size):
+    """
+    This function extract all the regions from region_dict
+    which are small and return a filtered region_dict and a
+    separate small_region dictionary.
+    small is defined as smaller than max_tile
+    """
+    small_regions = {}
+    for chrom, region_list in region_dict.items():
+        for region in region_list:
+            if _region_len(region) < min_size:
+                if chrom in small_regions:
+                    small_regions[chrom].append(region)
+                else:
+                    small_regions[chrom] = [region]
+        for small in small_regions[chrom]:
+            region_list.remove(small)
+    return region_dict, small_regions
 
-
+def _region_len(region):
+    return region[2] - region[1]
 
 def filter_closeby_regions(region_dict, max_tile, max_primer_len):
     """
@@ -502,8 +535,12 @@ def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
         region_list.sort(key = lambda x:x[1]) # sort using start coord
         # Give warning if region is too close to the chromosome boundary
         # Only check the first and last region in a given chromosome
-        first_region = region_list[0]
-        last_region = region_list[-1]
+        if region_list:
+            first_region = region_list[0]
+            last_region = region_list[-1]
+        else:
+            sys.stderr.write("No region of interest in %s\n"%chrom)
+            continue
         # Notice that first and last region might be the same if
         # there is only one region in this particular chromosome.
         min_margin = max_tile + max_primer_len -1
@@ -535,6 +572,26 @@ def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
             ref_seq = str(chrom_sequence[ref_start:ref_end])
             regions_and_reference.append((current_region, ref_seq))
     return regions_and_reference, boundary_regions
+
+                            
+def _merge_name(name1, name2):
+    """
+    Name1 and name2 are of the form
+        <chromosome>_<name from bedfile>
+    This function will return
+        <chromomsome>_<name from bedfile 1>_<name from bedfile 2>
+    if the names are the same, only one of the will be used, ie
+    we return
+        <chromosome>_<name from bedfile>
+    """
+    name1 = name1.split('_')
+    name2 = name2.split('_')
+    chrom = name1[0]
+    if not (name1[0] == name2[0] == chrom):
+        logging.info('WARNING: inconsistent chromosome naming')
+    new_name = chrom + '_' + '_'.join(set(name1[1:] + name2[1:]))
+    return new_name
+
 
 #
 #def filter_boundary_regions(region_dict, max_tile, max_primer_len):
@@ -654,26 +711,6 @@ def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
 #            region_index += num_merged
 #    return regions_and_reference
 #
-                            
-def _merge_name(name1, name2):
-    """
-    Name1 and name2 are of the form
-        <chromosome>_<name from bedfile>
-    This function will return
-        <chromomsome>_<name from bedfile 1>_<name from bedfile 2>
-    if the names are the same, only one of the will be used, ie
-    we return
-        <chromosome>_<name from bedfile>
-    """
-    name1 = name1.split('_')
-    name2 = name2.split('_')
-    chrom = name1[0]
-    if not (name1[0] == name2[0] == chrom):
-        logging.info('WARNING: inconsistent chromosome naming')
-    new_name = chrom + '_' + '_'.join(set(name1[1:] + name2[1:]))
-    return new_name
-
-
 
 #def handle_bedfile(bedfile):
 #    file = open(bedfile)
