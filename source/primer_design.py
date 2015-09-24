@@ -234,10 +234,11 @@ import csv
 from multiprocessing import Pool
 
 from score import Score
-from primer_search import Dp_search, regions_ref_seqs_generator, write_primer, write_aux
+from primer_search import Dp_search
+from io_handle import regions_ref_seqs_generator, write_primer, write_aux
 ###############################################################################
 
-DEFAULT_LOG_FILE = 'primer_design.log'
+DEFAULT_LOG_FILE = 'standard error'
 DEFAULT_OUTFILE = 'primer_out.tsv'
 DEFAULT_MERGE = True
 DEFAULT_FILTER_SMALL = True
@@ -274,12 +275,27 @@ def parse_args():
                         merged regions in the bedfiles that are too 
                         close to each other and tile those regios instead.
                         Defaulted to %s'''%DEFAULT_MERGE)
+    parser.add_argument('--min_sep', metavar='SEP', type=int,
+                        default=0, 
+                        help='''An integer specifying the minimum
+                        separation between regions acceptable before
+                        the regions are considered to be too close.''')
+    parser.add_argument('--min_size', metavar='SIZE', type=int,
+                        default=0,
+                        help='''An integer specifying the minimum 
+                        size of region before being consider too small''')
     parser.add_argument('--filter_small', metavar='BOOL', type=bool,
                         default=DEFAULT_FILTER_SMALL,
                         help='''Boolean value that specify if user wants
                         to filter out regions that are smaller than the 
                         maximum tile size, Defaulted to %s'''
                         %DEFAULT_FILTER_SMALL)
+    parser.add_argument('--filter_closeby', metavar='BOOL', type=bool,
+                        default=False,
+                        help='''Boolean value that specify if user wants
+                        to filter regions that are to close to each other.
+                        User can choose to merge them by giving 
+                        'True' to the --merge option''')
     parser.add_argument('--fa', metavar='FASTA_FILE', type=str,
                         required=True,
                         help='''The path to the reference fasta files''')
@@ -417,11 +433,18 @@ def parse_args():
 def start_log(log):
     '''Initiate program logging. If no log file is specified then
     log output goes to DEFAULT_LOG_FILE'''
-    logging.basicConfig(filename=log,
-                        level=logging.DEBUG,
-                        filemode='w',
-                        format='%(asctime)s %(message)s',
-                        datefmt='%m/%d/%Y %H:%M:%S')
+    if log == DEFAULT_LOG_FILE: 
+        logging.basicConfig(stream=sys.stderr,
+                            level=logging.DEBUG,
+                            filemode='w',
+                            format='%(asctime)s %(message)s',
+                            datefmt='%m/%d/%Y %H:%M:%S')
+    else:
+        logging.basicConfig(filename=log,
+                            level=logging.DEBUG,
+                            filemode='w',
+                            format='%(asctime)s %(message)s',
+                            datefmt='%m/%d/%Y %H:%M:%S')
     logging.info('program started')
     logging.info('command line: {0}'.format(' '.join(sys.argv)))
 
@@ -470,8 +493,7 @@ def primer_design(user_inputs):
                                                             score_func)
             #multi = Pool(2)
             # This will become multiprocess.map when the pickling has been handled
-            processed = map(process, regions_ref_seqs_generator(bedfilename,
-                                                                      user_inputs))
+            processed = map(process, regions_ref_seqs_generator(user_inputs))
             map(lambda searcher: write_primer(out_writer, searcher, correction_exponent),
                 processed)
             map(lambda searcher: write_aux(aux_writer, searcher), processed)
@@ -485,11 +507,10 @@ def process_region(region_ref_seq, user_inputs, score_func):
     
     coords = region_ref_seq[0]
     #write_aux(aux_writer, searcher)
-    sys.stderr.write(
-                     "Time taken for %s %s %s with length %s : %s\n"
-                     %(coords[0],coords[1],coords[2], 
-                       searcher.region_length, searcher.time_taken)
-                    )
+    logging.info("Time taken for %s %s %s with length %s : %s\n\n"
+                 %(coords[0],coords[1],coords[2], 
+                   searcher.region_length, searcher.time_taken)
+                )
     return searcher
 
 
