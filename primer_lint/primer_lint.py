@@ -26,7 +26,12 @@ DEFAULT_OUTFILE = 'primer_analysis.txt'
 NO_PRIMER_FILE = 'None'
 NO_AUX_FILE = 'None'
 NO_FA = 'None'
-DEFAULT_SW_SCORES = [2, -1, -1, -1, 0.0]
+DEFAULT_MATCH_SCORE = 2
+DEFAULT_MISMATCH_SCORE = -1
+DEFAULT_GAP_PENALTY = -1
+DEFAULT_GAP_EXTENSION_PENALTY = -1
+DEFAULT_GAP_EXTENSION_DECAY = 0.0
+DEFAULT_END_MATCH_SCORE = 2
 
 def parse_args():
     parser = ArgumentParser(description='''Analysis tools for primer
@@ -53,6 +58,24 @@ def parse_args():
                         default=[''],
                         help='''string value to specify the columns in 
                         primer data frame to be plotted in a pairplot''')
+    parser.add_argument('--match', metavar='SCORE', type=int,
+                        default=DEFAULT_MATCH_SCORE,
+                        help='''Match score for Smith Waterman alignment''')
+    parser.add_argument('--mismatch', metavar='SCORE', type=int,
+                        default=DEFAULT_MISMATCH_SCORE,
+                        help='''Mismatch score for Smith Waterman alignment''')
+    parser.add_argument('--gap_penalty', metavar='SCORE', type=int,
+                        default=DEFAULT_GAP_PENALTY,
+                        help='''Gap penalty for Smith Waterman alignment''')
+    parser.add_argument('--gap_extension_penalty', metavar='SCORE', type=int,
+                        default=DEFAULT_GAP_EXTENSION_PENALTY,
+                        help='''Gap extension penalty for Smith Waterman alignment''')
+    parser.add_argument('--gap_extension_decay', metavar='SCORE', type=float,
+                        default=DEFAULT_GAP_EXTENSION_DECAY,
+                        help='''Gap extension decay for Smith Waterman alignment''')
+    parser.add_argument('--end_match', metavar='SCORE', type=int,
+                        default=DEFAULT_END_MATCH_SCORE,
+                        help='''The scoring weight for 3' end matches''')
     parser.add_argument('--scores', metavar='SCORE', nargs=5, type=float,
                         default=DEFAULT_SW_SCORES,
                         help='''List of floats that specify,
@@ -66,10 +89,11 @@ def main():
     user_inputs = parse_args()
     (match, mismatch, gap_penalty,
     gap_extension_penalty, gap_extension_decay) = user_inputs.scores
-    sw_aligner = swalign.LocalAlignment(swalign.NucleotideScoringMatrix(match,mismatch),
-                                        gap_penalty=gap_penalty,
-                                        gap_extension_penalty=gap_extension_penalty,
-                                        gap_extension_decay=gap_extension_decay,
+    sw_aligner = swalign.LocalAlignment(swalign.NucleotideScoringMatrix(user_inputs.match,
+                                                                        user_inputs.mismatch),
+                                        gap_penalty=user_inputs.gap_penalty,
+                                        gap_extension_penalty=user_inputs.gap_extension_penalty,
+                                        gap_extension_decay=user_inputs.gap_extension_decay,
                                         prefer_gap_runs=True,
                                         verbose=False,
                                         globalalign=False,
@@ -83,7 +107,7 @@ def main():
         
         # annotate data frames with dimer scores
         # including swalign.score, 3' end scores, match, mismatch
-        annotate_dimer(primer_df, sw_aligner)
+        annotate_dimer(primer_df, sw_aligner, user_inputs.end_match)
         sys.stderr.write(str(primer_df.describe()))
         with open(user_inputs.outfile, 'w') as outfile:
             primer_df.to_csv(outfile, sep='\t')
@@ -99,7 +123,7 @@ def main():
 
 
 #################### Smith-Waterman Alignment #########################
-def align_to_pool(primer, pool, sw_aligner):
+def align_to_pool(primer, pool, sw_aligner, end_match_weight):
     """
     Align a single query primer to a pool of primer
     and return the best scored alignment 
@@ -111,12 +135,14 @@ def align_to_pool(primer, pool, sw_aligner):
     query = rev_complement(primer)
     for reference in pool:
         align = sw_aligner.align(reference, query)
-        if align.score > best_score:
-            best_score = align.score
+        end_matches = _get_end_matches(align.cigar)
+        this_score = align.score + end_match_weight * end_matches
+        if this_score > best_score:
+            best_score = this_score
             best_align = align
     return best_align
 
-def annotate_dimer(primer_df, sw_aligner):
+def annotate_dimer(primer_df, sw_aligner, end_match_weight):
     """
     Given the primer data frame (containing a column call sequence),
     produce another 3 columns in the data frame (mutating it):
@@ -133,11 +159,11 @@ def annotate_dimer(primer_df, sw_aligner):
     mismatches = []
     dimer_scores = []
     for query in pool:
-        best_align = align_to_pool(query, pool, sw_aligner)
+        best_align = align_to_pool(query, pool, sw_aligner, end_match_weight)
         a_score = best_align.score
         end = _get_end_matches(best_align.cigar)
         mm = (best_align.matches, best_align.mismatches)
-        d_score = dimer_scoring(a_score, end, mm, query)
+        d_score = dimer_scoring(a_score, end, mm, query, end_match_weight)
 
         align_scores.append(a_score)
         end_matches.append(end)
@@ -151,7 +177,7 @@ def annotate_dimer(primer_df, sw_aligner):
     primer_df['dimer_score'] = dimer_scores
 
 # !!! still in development, the precise scoring function is not determined
-def dimer_scoring(align_score, end_matches, match_mismatch, sequence):
+def dimer_scoring(align_score, end_matches, match_mismatch, sequence, end_match_weight):
     """
     Taking in alignment data and the sequence itself,
     produce a number between 0-100 as a score for primer dimer
@@ -159,7 +185,7 @@ def dimer_scoring(align_score, end_matches, match_mismatch, sequence):
     length = float(len(sequence))
     gc_content = _gc_content(sequence)
     return 100 * (align_score/(2 * length) 
-                  + end_matches/length 
+                  + end_matches * end_match_weight/length 
                   + gc_content
                   + match_mismatch[0]/length
                   - match_mismatch[1]/length)
