@@ -76,11 +76,6 @@ def parse_args():
     parser.add_argument('--end_match', metavar='SCORE', type=int,
                         default=DEFAULT_END_MATCH_SCORE,
                         help='''The scoring weight for 3' end matches''')
-    parser.add_argument('--scores', metavar='SCORE', nargs=5, type=float,
-                        default=DEFAULT_SW_SCORES,
-                        help='''List of floats that specify,
-                        (match score, mismatch score, gap_penalty,
-                        gap_extension_penalty, gap_extension_decay)''')
     return parser.parse_args()
 
 
