@@ -87,13 +87,9 @@ class Score(object):
 
         score_choice = user_inputs.score_func
         self.score_weights = user_inputs.score_weights
-#        if score_choice == 'score_Lp':
         self.score_func = (
                 lambda seq, direction: self.score_Lp(seq, direction, p = score_choice)
                           )
-#        elif score_choice == 'score_linear':
-#            self.score_func = self.score_linear
-#            self.linear_weights = user_inputs.linear_weights
 
         tm_func_choice = user_inputs.tm_func
         if tm_func_choice == "Tm_NN":

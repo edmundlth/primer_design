@@ -95,7 +95,6 @@ class Handle_Bedfile(object):
     def __init__(self, bedfile_name, min_separation, min_region_size, 
                  want_merge=True, want_filter_small=True, want_filter_closeby=True):
         problem_bedfilename = '_'.join(os.path.basename(bedfile_name).split('.')[:-1] + ['problems.bed'])
-        problems_output = []
         
         small_regions = {}
         closeby_regions = {}
@@ -125,10 +124,10 @@ class Handle_Bedfile(object):
                             if chrom in small_regions and region in small_regions[chrom]:
                                 logging.info('%s will be merged to %s'
                                              %(str(region), str(closeby_group)))
-                                problems_output.append(_problem_region_annotate(region, closeby=closeby_group, problem='msc'))
             merged_regions = merge_closeby_regions(closeby_regions)
 
         if small_regions or closeby_regions:
+            problems_output = []
             for chrom, closeby_list in closeby_regions.items():
                 for closeby_group in closeby_list:
                     for region in closeby_group:
@@ -170,9 +169,8 @@ def _problem_region_annotate(region, closeby=None, problem='sc'):
     first_underscore = chr_name.index('_')
     chr = chr_name[:first_underscore]
     name = chr_name[first_underscore+1:]
-    if problem == 'sc' or problem == 'c' or problem == 'msc':
-        # msc -> small and close but merged and will be processed
-        # sc -> small and close
+    if problem == 'sc' or problem == 'c':
+        # sc -> small and close (these regions will be processed)
         # c -> close
         # s -> small
         dist = ','.join(map(str, _distances(closeby)))
@@ -206,13 +204,6 @@ def regions_ref_seqs_generator(user_inputs):
                      %str(boundary_regions))
     for region_ref_seq in regions_and_ref_seqs:
         yield region_ref_seq
-
-
-
-            
-
-
-
 
 
 def obtain_regions(bedfile):
@@ -334,31 +325,6 @@ def merge_closeby_regions(closeby_regions):
                       str(_distances(closeby_group))))
     return merged_regions
 
-def _region_len(region):
-    return region[2] - region[1]
-
-def _distances(regions):
-    distances_list = []
-    for index in range(len(regions)-1):
-        dist = regions[index+1][1] - regions[index][2]
-        distances_list.append(dist)
-    return distances_list
-
-
-def _merge_closeby_group(closeby_list):
-    if len(closeby_list) >= 2:
-        first, second = closeby_list[:2]
-        merged_first = (_merge_name(first[0], second[0]),
-                        first[1],
-                        second[2])
-        return _merge_closeby_group([merged_first] + closeby_list[2:])
-    elif len(closeby_list) == 1:
-        return closeby_list[0]
-    else:
-        logging.info('Error: Trying to merge empty list of regions')
-        raise ValueError
-
-
 def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
     regions_and_reference = []
     boundary_regions = {}
@@ -410,6 +376,31 @@ def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
     return regions_and_reference, boundary_regions
 
                             
+
+def _region_len(region):
+    return region[2] - region[1]
+
+def _distances(regions):
+    distances_list = []
+    for index in range(len(regions)-1):
+        dist = regions[index+1][1] - regions[index][2]
+        distances_list.append(dist)
+    return distances_list
+
+
+def _merge_closeby_group(closeby_list):
+    if len(closeby_list) >= 2:
+        first, second = closeby_list[:2]
+        merged_first = (_merge_name(first[0], second[0]),
+                        first[1],
+                        second[2])
+        return _merge_closeby_group([merged_first] + closeby_list[2:])
+    elif len(closeby_list) == 1:
+        return closeby_list[0]
+    else:
+        logging.info('Error: Trying to merge empty list of regions')
+        raise ValueError
+
 def _merge_name(name1, name2):
     """
     Name1 and name2 are of the form
