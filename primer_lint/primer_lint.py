@@ -23,23 +23,24 @@ from time import time
 import random
 ############################ parse_arg() and main() #######################
 DEFAULT_OUTFILE = 'primer_analysis.txt'
-DEFAULT_DIRECTORY = '.'
+NO_PRIMER_FILE = 'None'
+NO_AUX_FILE = 'None'
+NO_FA = 'None'
 DEFAULT_SW_SCORES = [2, -1, -1, -1, 0.0]
 
 def parse_args():
     parser = ArgumentParser(description='''Analysis tools for primer
                                           design output''')
-    parser.add_argument('--dir', metavar='DIR', type=str,
-                        default=DEFAULT_DIRECTORY,
-                        help='''A string specifying the path to the
-                        directory containing the primer design result
-                        files. Default to current directory''')
+    parser.add_argument('--fa', metavar='FA_FILE', type=str,
+                        default=NO_FA,
+                        help='''A string specifying the fasta file
+                        containing all the primer sequence''')
     parser.add_argument('--primer_file', metavar='PRIMER_FILE',
-                        type=str, required=True,
+                        type=str, default=NO_PRIMER_FILE,
                         help='''The file name of the result file
                         containing all the primer's raw data''')
     parser.add_argument('--aux_file', metavar='AUXFILE',
-                        type=str, required=True,
+                        type=str, default=NO_AUX_FILE,
                         help='''The file name of the file containing
                         axiliary data from primer design''')
     parser.add_argument('--outfile', metavar="OUTFILE",
@@ -74,22 +75,28 @@ def main():
                                         globalalign=False,
                                         wildcard=None,
                                         full_query=False)
-    # produce data frames from the provided files
-    primer_file = os.path.join(user_inputs.dir, user_inputs.primer_file)
-    aux_file = os.path.join(user_inputs.dir, user_inputs.aux_file)
-    data = Primer_Data_Frames(primer_file, aux_file)
+    if user_inputs.primer_file != NO_PRIMER_FILE:
+        # produce data frames from the provided files
+        primer_file = user_inputs.primer_file
+#        primer_file = os.path.join(user_inputs.dir, user_inputs.primer_file)
+        primer_df = pd.read_csv(primer_file, sep='\t')
+        
+        # annotate data frames with dimer scores
+        # including swalign.score, 3' end scores, match, mismatch
+        annotate_dimer(primer_df, sw_aligner)
+        sys.stderr.write(str(primer_df.describe()))
+        with open(user_inputs.outfile, 'w') as outfile:
+            primer_df.to_csv(outfile, sep='\t')
+        if user_inputs.pairplot != ['']:
+            fig_name = user_inputs.outfile.split('.')[0] + '.png'
+            sns.pairplot(primer_df[user_inputs.pairplot])
+            plt.savefig(fig_name, format='png')
+    if user_inputs.aux_file != NO_AUX_FILE:
+        aux_file = user_inputs.aux_file
+#        aux_file = os.path.join(user_inputs.dir, user_inputs.aux_file)
+        aux_df = pd.read_csv(aux_file, sep='\t')
+        sys.stderr.write(str(aux_df.describe()))
 
-    # annotate data frames with dimer scores
-    # including swalign.score, 3' end scores, match, mismatch
-    annotate_dimer(data.primer_df, sw_aligner)
-    sys.stderr.write(str(data.primer_df))
-    with open(user_inputs.outfile,'w') as outfile:
-        outfile.write(str(data.primer_df.describe()) + '\n')
-        outfile.write(str(data.aux_df.describe())+'\n')
-    if user_inputs.pairplot != ['']:
-        fig_name = user_inputs.outfile.split('.')[0] + '.png'
-        sns.pairplot(data.primer_df[user_inputs.pairplot])
-        plt.savefig(fig_name, format='png')
 
 #################### Smith-Waterman Alignment #########################
 def align_to_pool(primer, pool, sw_aligner):
@@ -122,7 +129,8 @@ def annotate_dimer(primer_df, sw_aligner):
     length = len(pool)
     align_scores = []
     end_matches = []
-    match_mismatch = []
+    matches = []
+    mismatches = []
     dimer_scores = []
     for query in pool:
         best_align = align_to_pool(query, pool, sw_aligner)
@@ -133,11 +141,13 @@ def annotate_dimer(primer_df, sw_aligner):
 
         align_scores.append(a_score)
         end_matches.append(end)
-        match_mismatch.append(mm)
+        matches.append(mm[0])
+        mismatches.append(mm[1])
         dimer_scores.append(d_score)
     primer_df['align_score'] =  align_scores
     primer_df['end_matches'] = end_matches
-    primer_df['match_mismatch'] = match_mismatch
+    primer_df['matches'] = matches
+    primer_df['mismatches'] = mismatches
     primer_df['dimer_score'] = dimer_scores
 
 # !!! still in development, the precise scoring function is not determined
@@ -238,127 +248,20 @@ def rev_complement(seq):
     return ''.join([bases[b] for b in seq.upper()])[::-1]
 
 
+################### Auxiliary data processing ######################
 
+def wastage_annotate(aux_df):
+    pass
 
 
 
 #################### Primer Data Frames ##############################
+#
+#class Primer_Data_Frames(object):
+#    def __init__(self, primer_file=None, aux_file=None):
+#        self.primer_df = pd.read_csv(primer_file, sep='\t')
+#        self.aux_df = pd.read_csv(aux_file, sep='\t')
 
-class Primer_Data_Frames(object):
-    def __init__(self, primer_file=None, aux_file=None):
-        self.primer_df = pd.read_csv(primer_file, sep='\t')
-        self.aux_df = pd.read_csv(aux_file, sep='\t')
-
-        #self.primer_numeric_df = get_numeric_df(self.primer_df)
-        #self.aux_numeric_df = get_numeric_df(self.aux_df)
-        #self.kmer_table = None
-        #self.k = 0
-
-#    def annotate_dimer(self):
-#        if self.kmer_table == None:
-#            print('Warning: kmer counting have not been done')
-#        else:
-#            self.primer_df['dimer'] = pd.Series(
-#                                                map(self.dimer_score, 
-#                                                    self.primer_df['sequence'])
-#                                               )
-#
-#
-#    def dimer_score(self, seq, k,gc_weight=1.5, gc_cutoff=0.3):
-#        if seq != '':
-#            match_to = complement(seq[-k:])
-#            rev_match_to = match_to[::-1]
-#        if match_to in self.kmer_table:
-#            match = self.kmer_table[match_to]
-#        else:
-#            match = 0
-#
-#        if rev_match_to in self.kmer_table:
-#            rev_match = self.kmer_table[rev_match_to]
-#        else:
-#            rev_match = 0
-#
-#        return (match + rev_match) * gc_factor(seq, gc_weight, gc_cutoff)
-#
-#def make_kmer_table(k, bedfilename, fasta_dir, outfilename=None):
-#    return generate_kmer_
-#    self.kmer_table = generate_kmer_table(k, bedfilename, fasta_dir, outfilename)
-#
-#
-#def gc_factor(seq,gc_weight=1.5, gc_cutoff=0.3):
-#    seq = seq.upper()
-#    gc_fraction = (seq.count('G') + seq.count('C'))/float(len(seq))
-#    if gc_fraction > gc_cutoff:
-#        return 1 + gc_fraction * gc_weight
-#    else:
-#        return 0
-#
-#def complement(seq):
-#    bases = {'A':'T','G':'C','T':'A','C':'G'}
-#    return ''.join([bases[b] for b in seq.upper()])
-#
-#def get_numeric_df(df):
-#    '''Return a new data frame which consist of the all the 
-#    columns of the original data frame which has numeric type
-#    '''
-#    droplist = []
-#    for col in df.columns:
-#        column_type = df[col].dtype
-#        if column_type not in [np.dtype('float64'), np.dtype('int64')]:
-#            droplist.append(col)
-#    return df.drop(droplist,axis=1)
-
-##################### kmer counting ####################################
-#
-#def generate_kmer_table(k, bedfilename, fasta_dir, outfilename=None):
-#    if not outfilename:
-#        outfilename = bedfilename.split('.')[0] + '_region.fa'
-#    generate_ref_file(bedfilename, outfilename, fasta_dir)
-#    ref_seqs = get_ref_seqs(outfilename)
-#    kmer_table = kmer_count(ref_seqs, k)
-#    return kmer_table 
-#
-#def kmer_count(ref_seqs, k):
-#    count_dict = {}
-#    for seq in ref_seqs:
-#        length = len(seq)
-#        for index in range(length - k +1):
-#            kmer = seq[index:index + k]
-#            if kmer in count_dict:
-#                count_dict[kmer] +=1
-#            else:
-#                count_dict[kmer] = 1
-#    return count_dict
-#
-#
-#def get_ref_seqs(ref_seqs_filename):
-#    ref_seqs = [str(reader.seq).upper() for reader in SeqIO.parse(ref_seqs_filename,'fasta')]
-#    return ref_seqs
-#
-#def generate_ref_file(bedfilename, outfilename,fasta_dir, slack = 150):
-#    coords = handle_bed(bedfilename)
-#    coords = sorted(coords)
-#    with open(outfilename,'w') as outfile:
-#        for chrom_group in itertools.groupby(coords, lambda x:x[0]):
-#            chrom = chrom_group[0]
-#            fasta_filename = os.path.join(fasta_dir, '%s.fa'%chrom)
-#            with open(fasta_filename) as f_file:
-#                ref_seq = SeqIO.read(f_file,'fasta').seq
-#                length_ref = len(ref_seq)
-#                for coord in chrom_group[1]:
-#                    start = max(0, coord[1] - slack)
-#                    end = min(length_ref, coord[2] + slack)
-#                    seq = str(ref_seq[start:end])
-#                    seq_name = '_'.join(map(str,coord))
-#                    outfile.write('>' + seq_name + '\n')
-#                    outfile.write(seq + '\n')
-#
-#
-#def handle_bed(bedfilename, delimiter='\t'):
-#    with open(bedfilename) as bedfile:
-#        reader = csv.reader(bedfile, delimiter=delimiter)
-#        coords = [tuple([line[0]] + map(int,line[1:3])) for line in reader]
-#        return coords
 
 if __name__ == '__main__':
     main()
