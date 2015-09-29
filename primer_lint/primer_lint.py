@@ -82,8 +82,6 @@ def parse_args():
 def main():
     # parse user inputs and initialise swaligner object
     user_inputs = parse_args()
-    (match, mismatch, gap_penalty,
-    gap_extension_penalty, gap_extension_decay) = user_inputs.scores
     sw_aligner = swalign.LocalAlignment(swalign.NucleotideScoringMatrix(user_inputs.match,
                                                                         user_inputs.mismatch),
                                         gap_penalty=user_inputs.gap_penalty,
