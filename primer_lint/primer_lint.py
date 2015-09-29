@@ -22,8 +22,7 @@ import swalign
 from time import time
 import random
 ############################ parse_arg() and main() #######################
-DEFAULT_OUTFILE = 'primer_analysis.txt'
-NO_PRIMER_FILE = 'None'
+DEFAULT_OUTFILE = 'primer_analysis.tsv'
 NO_AUX_FILE = 'None'
 NO_FA = 'None'
 DEFAULT_MATCH_SCORE = 2
@@ -41,7 +40,7 @@ def parse_args():
                         help='''A string specifying the fasta file
                         containing all the primer sequence''')
     parser.add_argument('--primer_file', metavar='PRIMER_FILE',
-                        type=str, default=NO_PRIMER_FILE,
+                        type=str, required=True,
                         help='''The file name of the result file
                         containing all the primer's raw data''')
     parser.add_argument('--aux_file', metavar='AUXFILE',
@@ -92,22 +91,21 @@ def main():
                                         globalalign=False,
                                         wildcard=None,
                                         full_query=False)
-    if user_inputs.primer_file != NO_PRIMER_FILE:
-        # produce data frames from the provided files
-        primer_file = user_inputs.primer_file
+    # produce data frames from the provided files
+    primer_file = user_inputs.primer_file
 #        primer_file = os.path.join(user_inputs.dir, user_inputs.primer_file)
-        primer_df = pd.read_csv(primer_file, sep='\t')
-        
-        # annotate data frames with dimer scores
-        # including swalign.score, 3' end scores, match, mismatch
-        annotate_dimer(primer_df, sw_aligner, user_inputs.end_match)
-        sys.stderr.write(str(primer_df.describe()))
-        with open(user_inputs.outfile, 'w') as outfile:
-            primer_df.to_csv(outfile, sep='\t')
-        if user_inputs.pairplot != ['']:
-            fig_name = user_inputs.outfile.split('.')[0] + '.png'
-            sns.pairplot(primer_df[user_inputs.pairplot])
-            plt.savefig(fig_name, format='png')
+    primer_df = pd.read_csv(primer_file, sep='\t')
+    
+    # annotate data frames with dimer scores
+    # including swalign.score, 3' end scores, match, mismatch
+    annotate_dimer(primer_df, sw_aligner, user_inputs.end_match)
+    sys.stderr.write(str(primer_df.describe()))
+    with open(user_inputs.outfile, 'w') as outfile:
+        primer_df.to_csv(outfile, sep='\t')
+    if user_inputs.pairplot != ['']:
+        fig_name = user_inputs.outfile.split('.')[0] + '.png'
+        sns.pairplot(primer_df[user_inputs.pairplot])
+        plt.savefig(fig_name, format='png')
     if user_inputs.aux_file != NO_AUX_FILE:
         aux_file = user_inputs.aux_file
 #        aux_file = os.path.join(user_inputs.dir, user_inputs.aux_file)
