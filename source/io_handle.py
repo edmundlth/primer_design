@@ -4,6 +4,7 @@ import os
 import csv
 from Bio import SeqIO
 from utils import mean, std_deviation
+from primer_search import pick_primer_set, get_primer_seq
 
 def write_aux(aux_writer, searcher):
     """
@@ -176,6 +177,7 @@ class Handle_Bedfile(object):
         # we retain a record of small regions in small_regions
         # and produce another dictionary of regions
         if want_filter_small:
+            logging.info("Filtering regions that are smaller than %i"%(min_region_size))
             processed = filter_small_regions(original_regions, min_region_size)
             filtered_regions_small = processed[0]
             small_regions = processed[1]
@@ -184,6 +186,7 @@ class Handle_Bedfile(object):
         # or if they specify that they want merging
         # we will produce the filtered and closeby region dictionary
         if want_filter_closeby or want_merge:
+            logging.info("Filtering regions that have separation < %i"%min_separation)
             processed = filter_closeby_regions(original_regions, min_separation)
             filtered_regions_closeby = processed[0]
             closeby_regions = processed[1]

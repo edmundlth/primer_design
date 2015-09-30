@@ -78,15 +78,25 @@ class Score(object):
         self.sense_heel = user_inputs.sense_heel.upper()
         self.antisense_heel = user_inputs.antisense_heel.upper()
 
-        (self.Na, self.Mg, self.K,self.dNTPs,
-         self.Tris,self.dnac1,self.dnac2) = user_inputs.conc
+        self.Na = user_inputs.Na
+        self.Mg = user_inputs.Mg
+        self.K = user_inputs.K
+        self.dNTPs = user_inputs.dNTPs
+        self.Tris = user_inputs.Tris
+        self.dnac1 = user_inputs.dnac1
+        self.dnac2 = user_inputs.dnac2
 
         self.saltcorr = user_inputs.saltcorr
         self.gc_weight = user_inputs.gc_weight
         assert self.gc_weight >= 1.0
 
         score_choice = user_inputs.score_func
-        self.score_weights = user_inputs.score_weights
+        self.score_weights = [user_inputs.tm_weight,
+                              user_inputs.entropy_weight,
+                              user_inputs.hairpin_weight,
+                              user_inputs.gc_content_weight,
+                              user_inputs.gc_clamp_weight,
+                              user_inputs.run_weight]
         self.score_func = (
                 lambda seq, direction: self.score_Lp(seq, direction, p = score_choice)
                           )

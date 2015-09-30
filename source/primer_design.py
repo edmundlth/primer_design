@@ -240,13 +240,19 @@ from io_handle import regions_ref_seqs_generator, write_primer, write_aux
 
 DEFAULT_LOG_FILE = 'standard error'
 DEFAULT_OUTFILE = 'primer_out.tsv'
-DEFAULT_MERGE = True
-DEFAULT_FILTER_SMALL = True
+
+#DEFAULT_MERGE = False
+#DEFAULT_FILTER_SMALL = False
+#DEFAULT_FILTER_CLOSEBY = False   # !!! defaulted using action='store_true'
+DEFAULT_MIN_SEP = 0
+DEFAULT_MIN_SIZE = 0
+
 DEFAULT_PRIMER_LENGTH = 20
 DEFAULT_PRIMER_LENGTH_VAR = 8
 DEFAULT_ALLOWED_OVERLAP = 10
 DEFAULT_TM_FUNC = 'Tm_NN'
 DEFAULT_SCORE_FUNC = 1      # this is the p-value in the Lp-norm
+
 # Default to no weighting
 DEFAULT_TM_WEIGHT = 1
 DEFAULT_ENTROPY_WEIGHT = 1
@@ -300,35 +306,31 @@ def parse_args():
                            and statistics''')
 
     filtering_args = parser.add_argument_group('Filtering BED file')
-    filtering_args.add_argument('--merge', metavar='BOOL', type=bool,
-                                default=DEFAULT_MERGE,
+    filtering_args.add_argument('--merge', action='store_true', 
                                 help='''Boolean value that specify if user wants
                                 to get warning about regions that are too close
                                 to chromosome's boundary and
                                 merged regions in the bedfiles that are too 
                                 close to each other and tile those regios instead.
-                                Defaulted to %s'''%DEFAULT_MERGE)
+                                Default to False''')
     filtering_args.add_argument('--min_sep', metavar='SEP', type=int,
-                                default=0, 
+                                default=DEFAULT_MIN_SEP, 
                                 help='''An integer specifying the minimum
                                 separation between regions acceptable before
                                 the regions are considered to be too close.''')
     filtering_args.add_argument('--min_size', metavar='SIZE', type=int,
-                                default=0,
+                                default=DEFAULT_MIN_SIZE,
                                 help='''An integer specifying the minimum 
                                 size of region before being consider too small''')
-    filtering_args.add_argument('--filter_small', metavar='BOOL', type=bool,
-                                default=DEFAULT_FILTER_SMALL,
+    filtering_args.add_argument('--filter_small', action='store_true',
                                 help='''Boolean value that specify if user wants
                                 to filter out regions that are smaller than the 
-                                maximum tile size, Defaulted to %s'''
-                                %DEFAULT_FILTER_SMALL)
-    filtering_args.add_argument('--filter_closeby', metavar='BOOL', type=bool,
-                                default=False,
+                                maximum tile size, Defaulted to False''')
+    filtering_args.add_argument('--filter_closeby', action='store_true',
                                 help='''Boolean value that specify if user wants
                                 to filter regions that are to close to each other.
                                 User can choose to merge them by giving 
-                                'True' to the --merge option''')
+                                --merge option''')
 
     heel_args = parser.add_argument_group('Heel sequences')
     heel_args.add_argument('--sense_heel', metavar='SENSE_HEEL', type=str,
