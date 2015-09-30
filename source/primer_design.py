@@ -247,12 +247,28 @@ DEFAULT_PRIMER_LENGTH_VAR = 8
 DEFAULT_ALLOWED_OVERLAP = 10
 DEFAULT_TM_FUNC = 'Tm_NN'
 DEFAULT_SCORE_FUNC = 1      # this is the p-value in the Lp-norm
-DEFAULT_SCORE_WEIGHTS = [1, 1, 1, 1, 1, 1]    # default to no weighting
+# Default to no weighting
+DEFAULT_TM_WEIGHT = 1
+DEFAULT_ENTROPY_WEIGHT = 1
+DEFAULT_HAIRPIN_WEIGHT = 1
+DEFAULT_GC_CONTENT_WEIGHT = 1
+DEFAULT_GC_CLAMP_WEIGHT = 1
+DEFAULT_RUN_WEIGHT = 1
+
 DEFAULT_ADJUST_SCORE = 1.0   # this is the exponent in Score/numtile^exponent
 DEFAULT_TARGET_TM = 64.0
 DEFAULT_TM_UNDERACHIEVE = 1.0
+DEFAULT_NN_TABLE = 3
 DEFAULT_SALTCORR = 3
-DEFAULT_CONC = [50, 0, 0, 0, 0, 25, 25]
+
+DEFAULT_NA = 50
+DEFAULT_K = 0
+DEFAULT_MG = 0
+DEFAULT_TRIS = 0
+DEFAULT_DNTPS = 0
+DEFAULT_DNAC1 = 25
+DEFAULT_DNAC2 = 25
+
 DEFAULT_GC_WEIGHT = 1.5
 DEFAULT_AUXFILE = 'auxiliary_primer_out.tsv'
 
@@ -260,174 +276,220 @@ DEFAULT_AUXFILE = 'auxiliary_primer_out.tsv'
 def parse_args():
     'Parse command line arguments for the program'
     parser = ArgumentParser(description='Hi-Plex primer design tool')
-    parser.add_argument('--log', metavar="LOG_FILE", type=str,
-                        default=DEFAULT_LOG_FILE,
-                        help='Log file. Default to %s'%DEFAULT_LOG_FILE)
-    parser.add_argument('--bed', metavar="BED_FILE", type=str,
-                        required=True,
-                        help='''Path to the BED file specifying all the 
-                        coordinates of the regions of interest ''')
-    parser.add_argument('--merge', metavar='BOOL', type=bool,
-                        default=DEFAULT_MERGE,
-                        help='''Boolean value that specify if user wants
-                        to get warning about regions that are too close
-                        to chromosome's boundary and
-                        merged regions in the bedfiles that are too 
-                        close to each other and tile those regios instead.
-                        Defaulted to %s'''%DEFAULT_MERGE)
-    parser.add_argument('--min_sep', metavar='SEP', type=int,
-                        default=0, 
-                        help='''An integer specifying the minimum
-                        separation between regions acceptable before
-                        the regions are considered to be too close.''')
-    parser.add_argument('--min_size', metavar='SIZE', type=int,
-                        default=0,
-                        help='''An integer specifying the minimum 
-                        size of region before being consider too small''')
-    parser.add_argument('--filter_small', metavar='BOOL', type=bool,
-                        default=DEFAULT_FILTER_SMALL,
-                        help='''Boolean value that specify if user wants
-                        to filter out regions that are smaller than the 
-                        maximum tile size, Defaulted to %s'''
-                        %DEFAULT_FILTER_SMALL)
-    parser.add_argument('--filter_closeby', metavar='BOOL', type=bool,
-                        default=False,
-                        help='''Boolean value that specify if user wants
-                        to filter regions that are to close to each other.
-                        User can choose to merge them by giving 
-                        'True' to the --merge option''')
-    parser.add_argument('--fa', metavar='FASTA_FILE', type=str,
-                        required=True,
-                        help='''The path to the reference fasta files''')
-    parser.add_argument('--outfile', metavar="OUTPUT_FILE", type=str,
-                        default=DEFAULT_OUTFILE,
-                        help=''' A string specifying the name of the output
-                        file''')
-    parser.add_argument('--sense_heel', metavar='SENSE_HEEL', type=str,
-                        required=True,
-                        help='''A string of nucleic acid specifying the
-                        sense heel strand''')
-    parser.add_argument('--antisense_heel', metavar='ANTISENSE_HEEL', type=str,
-                        required=True,
-                        help='''A string of nucleic acid specifying the
-                        antisense heel strand''')
-    parser.add_argument('--tiles', metavar="MAX_MIN_TILE_SIZE", type=int,
-                        required=True, nargs=2,
-                        help=''' A pair of integers specifying the maximum
-                        and the minimum tile sizes inclusive''')
-    parser.add_argument('--primer_length', metavar='PRIMER_LENGTH', type=int,
-                        default=DEFAULT_PRIMER_LENGTH,
-                        help='''An integer specifying the optimal primer length
-                        Defaulted to %s'''%DEFAULT_PRIMER_LENGTH)
-    parser.add_argument('--primer_length_var', metavar='PRIMER_LENGTH_VARIATION',
-                        type=int, default=DEFAULT_PRIMER_LENGTH_VAR,
-                        help='''An integer specifying the amount of variation
-                        from the optimal primer length.
-                        Defaulted to %s
-                        Eg: optimal length of 20 and variation of 5 gives
-                            primer length ranging from 15 to 25 inclusive'''
-                        %DEFAULT_PRIMER_LENGTH_VAR)
-    parser.add_argument('--allowed_overlap', metavar="ALLOWED_TILE_OVERLAP",
-                        type=int, default=DEFAULT_ALLOWED_OVERLAP,
-                        help='''An integer specifying the allowed overlaping
-                        between successive tiles.
-                        Defaulted to %s'''%DEFAULT_ALLOWED_OVERLAP)
-    parser.add_argument('--score_func', metavar='P_NORM_VAL',
-                        type=int, default=DEFAULT_SCORE_FUNC,
-                        choices=[1,2],
-                        help='''A number specifying the p value in 
-                        the Lp-norm used. In particular, p=1 reduces to
-                        a linear sum. 
-                        Default to %s'''%DEFAULT_SCORE_FUNC)
-    parser.add_argument('--score_weights', metavar='WEIGHT',
-                        type=float, nargs='*',
-                        default=DEFAULT_SCORE_WEIGHTS,
-                        help='''A list of weights for scoring, 
-                        the order of the list is given by,
-                        score =   a0 * tm 
-                                + a1 * entropy
-                                + a2 * hairpin
-                                + a3 * gc_content
-                                + a4 * gc_clamp
-                                + a5 * run
-                        Default to:
-                        [a0, a1, a2, a3, a4, a5] = %s'''%DEFAULT_SCORE_WEIGHTS)
-    parser.add_argument('--adjust_score', metavar='EXPONENT', type=float,
-                        default=DEFAULT_ADJUST_SCORE,
-                        help='''The exponent, e, in the formula,
-                        adjusted_score = score / (tile_count)^e.
-                        This is correction is added so that the algorithm
-                        will not bias towards high tile count since 
-                        'score' is additive.
-                        Default to %s'''%DEFAULT_ADJUST_SCORE)
-    parser.add_argument('--tm_func', metavar='TM_FUNCTION', type=str,
-                        default=DEFAULT_TM_FUNC,
-                        choices=['Tm_NN', 'Tm_GC', 'Tm_Wallace'],
-                        help='''A string specifying the name of the
-                        melting temperature prediction algorithm used.
-                        Defaulted to %s'''%DEFAULT_TM_FUNC)
-    parser.add_argument('--target_tm', metavar="TARGET_TM", type=float,
-                        default=DEFAULT_TARGET_TM,
-                        help='''A floating point number specifying the
-                        target melting point of the reaction mixture
-                        in degree Celsius.
-                        Defaulted to %s degC'''%DEFAULT_TARGET_TM)
-    parser.add_argument('--tm_underachieve', metavar="TM_UNDERACHIEVE_PENALTY",
-                        type=float, default=DEFAULT_TM_UNDERACHIEVE,
-                        help='''A floating point number specifying the
-                        penalty weight given to an underachieving primer
-                        in term of tm, ie has lower melting temperature than
-                        target_tm. Lower melting temperature should be score
-                        harsher than higher ones, there for the value should
-                        be > 1.''')
-    parser.add_argument('--NN_table', metavar='NN_TABLE',
-                        type=int, default=3,
-                        choices=range(1,5),
-                        help='''An integer specifying the nearest neighbour
-                        thermodynamic table to be used.\n
-                        1 -- Breslauer et al. (1986)\n
-                        2 -- Sugimoto et al. (1996)\n
-                        3 -- Allawi and SantaLucia (1997)\n
-                        4 -- SantaLucia & Hicks (2004)\n
-                        ''')
-    parser.add_argument('--saltcorr', metavar="SALTCORR", type=int,
-                        default=DEFAULT_SALTCORR,
-                        choices=range(0,8),
-                        help=''' An integer from 0 to 7 inclusive indicating
-                        the saltcorrection method to be used during
-                        melting temperature prediction.
-                        0 - no salt corrections.
-                        To see individual method, refer to
-                        BioPython Bio.SeqUtils.MeltingTemp module
-                        Default to %s.'''%DEFAULT_SALTCORR)
-    parser.add_argument('--conc', metavar="CONC", type=float,
-                        nargs=7, default=DEFAULT_CONC,
-                        help=''' 7 floating point numbers which give the
-                        the concentration of the following chemical species:
-                            - Na (in mM)\n
-                            - K  (in mM)\n
-                            - Mg (in mM)\n
-                            - Tris-HCl (in mM)\n
-                            - dNTPs (in mM)\n
-                            - dnac1 (in nM) note the nM. This is the
-                                            concentration of the more abundant
-                                            DNA species (likely to be primer)\n
-                            - dnac2 (in nM) Concentration of the less abundant
-                                            DNA species.\n
+    file_args = parser.add_argument_group('Files',
+                              'Arguments specifying input/output filenames')
+    file_args.add_argument('--log', metavar="LOG_FILE", type=str,
+                           default=DEFAULT_LOG_FILE,
+                           help='Log file. Default to %s'%DEFAULT_LOG_FILE)
+    file_args.add_argument('--bed', metavar="BED_FILE", type=str,
+                           required=True,
+                           help='''Path to the BED file specifying all the 
+                           coordinates of the regions of interest ''')
+    file_args.add_argument('--fa', metavar='FASTA_DIR', type=str,
+                           required=True,
+                           help='''The path to the directory containing all
+                           required reference fasta files''')
+    file_args.add_argument('--outfile', metavar="OUTPUT_FILE", type=str,
+                           default=DEFAULT_OUTFILE,
+                           help=''' A string specifying the name of the output
+                           file''')
+    file_args.add_argument('--auxfile', metavar="AUXILIARY_FILE", type=str,
+                           default=DEFAULT_AUXFILE,
+                           help='''A string specifying the name of an auxiliary
+                           output files that will record some additional data
+                           and statistics''')
 
-                            Default to %s
-                            '''%DEFAULT_CONC)
-    parser.add_argument('--gc_weight', metavar="GC_WEIGHT", type=float,
-                        default=DEFAULT_GC_WEIGHT,
-                        help='''A floating point number >1 specifying the
-                        weight given to G-C binding over A-T binding during
-                        the scoring of hairpins.
-                        Default to %s'''%DEFAULT_GC_WEIGHT)
-    parser.add_argument('--auxfile', metavar="AUXILIARY_FILE", type=str,
-                        default=DEFAULT_AUXFILE,
-                        help='''A string specifying the name of an auxiliary
-                        output files that will record some additional data
-                        and statistics''')
+    filtering_args = parser.add_argument_group('Filtering BED file')
+    filtering_args.add_argument('--merge', metavar='BOOL', type=bool,
+                                default=DEFAULT_MERGE,
+                                help='''Boolean value that specify if user wants
+                                to get warning about regions that are too close
+                                to chromosome's boundary and
+                                merged regions in the bedfiles that are too 
+                                close to each other and tile those regios instead.
+                                Defaulted to %s'''%DEFAULT_MERGE)
+    filtering_args.add_argument('--min_sep', metavar='SEP', type=int,
+                                default=0, 
+                                help='''An integer specifying the minimum
+                                separation between regions acceptable before
+                                the regions are considered to be too close.''')
+    filtering_args.add_argument('--min_size', metavar='SIZE', type=int,
+                                default=0,
+                                help='''An integer specifying the minimum 
+                                size of region before being consider too small''')
+    filtering_args.add_argument('--filter_small', metavar='BOOL', type=bool,
+                                default=DEFAULT_FILTER_SMALL,
+                                help='''Boolean value that specify if user wants
+                                to filter out regions that are smaller than the 
+                                maximum tile size, Defaulted to %s'''
+                                %DEFAULT_FILTER_SMALL)
+    filtering_args.add_argument('--filter_closeby', metavar='BOOL', type=bool,
+                                default=False,
+                                help='''Boolean value that specify if user wants
+                                to filter regions that are to close to each other.
+                                User can choose to merge them by giving 
+                                'True' to the --merge option''')
+
+    heel_args = parser.add_argument_group('Heel sequences')
+    heel_args.add_argument('--sense_heel', metavar='SENSE_HEEL', type=str,
+                           required=True,
+                           help='''A string of nucleic acid specifying the
+                           sense heel strand''')
+    heel_args.add_argument('--antisense_heel', metavar='ANTISENSE_HEEL', type=str,
+                           required=True,
+                           help='''A string of nucleic acid specifying the
+                           antisense heel strand''')
+
+    search_args = parser.add_argument_group('Search parameters',
+            "Parameter used during Dynamic Programming search")
+    search_args.add_argument('--tiles', metavar="MAX_MIN_TILE_SIZE", type=int,
+                             required=True, nargs=2,
+                             help=''' A pair of integers specifying the maximum
+                             and the minimum tile sizes inclusive''')
+    search_args.add_argument('--primer_length', metavar='PRIMER_LENGTH', type=int,
+                             default=DEFAULT_PRIMER_LENGTH,
+                             help='''An integer specifying the optimal primer length
+                             Defaulted to %s'''%DEFAULT_PRIMER_LENGTH)
+    search_args.add_argument('--primer_length_var', metavar='PRIMER_LENGTH_VARIATION',
+                             type=int, default=DEFAULT_PRIMER_LENGTH_VAR,
+                             help='''An integer specifying the amount of variation
+                             from the optimal primer length.
+                             Defaulted to %s
+                             Eg: optimal length of 20 and variation of 5 gives
+                                 primer length ranging from 15 to 25 inclusive'''
+                             %DEFAULT_PRIMER_LENGTH_VAR)
+    search_args.add_argument('--allowed_overlap', metavar="ALLOWED_TILE_OVERLAP",
+                             type=int, default=DEFAULT_ALLOWED_OVERLAP,
+                             help='''An integer specifying the allowed overlaping
+                             between successive tiles.
+                             Defaulted to %s'''%DEFAULT_ALLOWED_OVERLAP)
+
+    scoring_args = parser.add_argument_group('Scoring parameters',
+            "Parameters used to score primers during search")
+    scoring_args.add_argument('--score_func', metavar='P_NORM_VAL',
+                              type=int, default=DEFAULT_SCORE_FUNC,
+                              choices=[1,2],
+                              help='''A number specifying the p value in 
+                              the Lp-norm used. In particular, p=1 reduces to
+                              a linear sum. 
+                              Default to %s'''%DEFAULT_SCORE_FUNC)
+    scoring_args.add_argument('--tm_weight', metavar='WEIGHT',
+                              type=float, default=DEFAULT_TM_WEIGHT,
+                              help='''A positive real number specifying
+                              the weight given to Melting temperature''')
+    scoring_args.add_argument('--entropy_weight', metavar="WEIGHT",
+                              type=float, default=DEFAULT_ENTROPY_WEIGHT,
+                              help='''A positive real number specifying
+                              the weight given to entropy''')
+    scoring_args.add_argument('--hairpin_weight', metavar="WEIGHT",
+                              type=float, default=DEFAULT_HAIRPIN_WEIGHT,
+                              help='''A positive real number specifying
+                              the weight given to hairpin''')
+    scoring_args.add_argument('--gc_content_weight', metavar="WEIGHT",
+                              type=float, default=DEFAULT_GC_CONTENT_WEIGHT,
+                              help='''A positive real number specifying
+                              the weight given to gc content''')
+    scoring_args.add_argument('--gc_clamp_weight', metavar="WEIGHT",
+                              type=float, default=DEFAULT_GC_CLAMP_WEIGHT,
+                              help='''A positive real number specifying
+                              the weight given to gc clamp''')
+    scoring_args.add_argument('--run_weight', metavar="WEIGHT",
+                              type=float, default=DEFAULT_RUN_WEIGHT,
+                              help='''A positive real number specifying
+                              the weight given to run''')
+    scoring_args.add_argument('--adjust_score', metavar='EXPONENT', type=float,
+                              default=DEFAULT_ADJUST_SCORE,
+                              help='''The exponent, e, in the formula,
+                              adjusted_score = score / (tile_count)^e.
+                              This is correction is added so that the algorithm
+                              will not bias towards high tile count since 
+                              'score' is additive.
+                              Default to %s'''%DEFAULT_ADJUST_SCORE)
+    scoring_args.add_argument('--gc_weight', metavar="GC_WEIGHT", type=float,
+                              default=DEFAULT_GC_WEIGHT,
+                              help='''A floating point number >1 specifying the
+                              weight given to G-C binding over A-T binding during
+                              the scoring of hairpins.
+                              Default to %s'''%DEFAULT_GC_WEIGHT)
+
+    tm_args = parser.add_argument_group('Tm scoring parameters')
+    tm_args.add_argument('--tm_func', metavar='TM_FUNCTION', type=str,
+                         default=DEFAULT_TM_FUNC,
+                         choices=['Tm_NN', 'Tm_GC', 'Tm_Wallace'],
+                         help='''A string specifying the name of the
+                         melting temperature prediction algorithm used.
+                         Defaulted to %s'''%DEFAULT_TM_FUNC)
+    tm_args.add_argument('--target_tm', metavar="TARGET_TM", type=float,
+                         default=DEFAULT_TARGET_TM,
+                         help='''A floating point number specifying the
+                         target melting point of the reaction mixture
+                         in degree Celsius.
+                         Defaulted to %s degC'''%DEFAULT_TARGET_TM)
+    tm_args.add_argument('--tm_underachieve', metavar="TM_UNDERACHIEVE_PENALTY",
+                         type=float, default=DEFAULT_TM_UNDERACHIEVE,
+                         help='''A floating point number specifying the
+                         penalty weight given to an underachieving primer
+                         in term of tm, ie has lower melting temperature than
+                         target_tm. Lower melting temperature should be score
+                         harsher than higher ones, there for the value should
+                         be > 1.''')
+    tm_args.add_argument('--NN_table', metavar='NN_TABLE',
+                         type=int, default=DEFAULT_NN_TABLE,
+                         choices=range(1,5),
+                         help='''An integer specifying the nearest neighbour
+                         thermodynamic table to be used.\n
+                         1 -- Breslauer et al. (1986)\n
+                         2 -- Sugimoto et al. (1996)\n
+                         3 -- Allawi and SantaLucia (1997)\n
+                         4 -- SantaLucia & Hicks (2004)\n
+                         ''')
+    tm_args.add_argument('--saltcorr', metavar="SALTCORR", type=int,
+                         default=DEFAULT_SALTCORR,
+                         choices=range(0,8),
+                         help=''' An integer from 0 to 7 inclusive indicating
+                         the saltcorrection method to be used during
+                         melting temperature prediction.
+                         0 - no salt corrections.
+                         To see individual method, refer to
+                         BioPython Bio.SeqUtils.MeltingTemp module
+                         Default to %s.'''%DEFAULT_SALTCORR)
+    tm_args.add_argument('--Na', metavar="CONC", type=float,
+                         default=DEFAULT_NA,
+                         help='''A positive real number specifying
+                         the concentration of Sodium ion
+                         Defaulted to %s'''%DEFAULT_NA)
+    tm_args.add_argument('--K', metavar="CONC", type=float,
+                         default=DEFAULT_K,
+                         help='''A positive real number specifying
+                         the concentration of Potassium ion
+                         Default to %s'''%DEFAULT_K)
+    tm_args.add_argument('--Mg', metavar="CONC", type=float,
+                         default=DEFAULT_MG,
+                         help='''A positive real number specifying
+                         the concentration of Magnesium ion
+                         Default to %s'''%DEFAULT_MG)
+    tm_args.add_argument('--Tris', metavar="CONC", type=float,
+                         default=DEFAULT_TRIS,
+                         help='''A positive real number specifying
+                         the concentration of Tris-HCl.
+                         Default to %s'''%DEFAULT_TRIS)
+    tm_args.add_argument('--dNTPs', metavar="CONC", type=float,
+                         default=DEFAULT_DNTPS,
+                         help='''A positive real number specifying
+                         the concentration of deoxyribose nucleoside
+                         triphosphate. Default to %s'''%DEFAULT_TRIS)
+    tm_args.add_argument('--dnac1', metavar="CONC", type=float,
+                         default=DEFAULT_DNAC1,
+                         help='''A positive real number specifying
+                         the concentration of the more abundant DNA
+                         species, likely to be primer.
+                         Default to %s'''%DEFAULT_DNAC1)
+    tm_args.add_argument('--dnac2', metavar="CONC", type=float,
+                         default=DEFAULT_DNAC2,
+                         help='''A positive real number specifying
+                         the concentration of the less abundant
+                         DNA species.
+                         Default to %s'''%DEFAULT_DNAC2)
     return parser.parse_args()
 
 def start_log(log):

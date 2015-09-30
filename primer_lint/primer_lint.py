@@ -108,8 +108,8 @@ def main():
         plt.savefig(fig_name, format='png')
     if user_inputs.aux_file != NO_AUX_FILE:
         aux_file = user_inputs.aux_file
-#        aux_file = os.path.join(user_inputs.dir, user_inputs.aux_file)
         aux_df = pd.read_csv(aux_file, sep='\t')
+        wastage_annotate(aux_df)
         sys.stderr.write(str(aux_df.describe()))
 
 
@@ -268,7 +268,12 @@ def rev_complement(seq):
 ################### Auxiliary data processing ######################
 
 def wastage_annotate(aux_df):
-    pass
+    aux_df['covered_length'] = map(lambda x: x[1] * x[0], 
+                                   zip(aux_df['tile_count'], 
+                                       aux_df['mean_tile']))
+    aux_df['wastage'] = map(lambda x: x[1] - x[0],
+                            zip(aux_df['region_length'],
+                                aux_df['covered_length']))
 
 
 

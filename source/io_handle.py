@@ -73,8 +73,41 @@ def write_primer(out_writer, searcher, score_correction_exponent):
 
                   
                   
-######## Filter problematic regions in bedfile 
-######## and obtain reference sequence from fasta 
+def regions_ref_seqs_generator(user_inputs):
+    """
+    Using user specified parameters, process
+    (filter, merge and warn if user chose to) the input
+    BED file, obtain all reference sequence for the processed
+    regions, and yield the regions and their reference sequence
+    to be tiled and searched.
+    """
+    final_regions = Handle_Bedfile(bedfile_name = user_inputs.bed,
+                                   min_separation = user_inputs.min_sep,
+                                   min_region_size = user_inputs.min_size,
+                                   want_merge = user_inputs.merge,
+                                   want_filter_small = user_inputs.filter_small,
+                                   want_filter_closeby = user_inputs.filter_closeby
+                                  ).final_regions
+    max_tile = user_inputs.tiles[1]
+    max_primer_len = user_inputs.primer_length + user_inputs.primer_length_var
+    fa_path = user_inputs.fa
+    (regions_and_ref_seqs,
+     boundary_regions) = get_all_ref_seq(final_regions, max_tile, max_primer_len, fa_path)
+    # Regions that are too close to the boundary are filtered out,
+    # warned about and ignored.
+    # !!! This should be part of the warning stage in Handle_Bedfile()
+    # !!! but reading the chromosome sequence is costly, thus we 
+    # !!! do it once and do it here only.
+    if boundary_regions:
+        logging.info("These regions are too close to chromosome's boundary: %s"
+                     %str(boundary_regions))
+    for region_ref_seq in regions_and_ref_seqs:
+        yield region_ref_seq
+
+
+
+######## Filter problematic regions in bedfile ##########################
+
 class Handle_Bedfile(object):
     """
     This object handles the input bedfiles.
@@ -91,26 +124,70 @@ class Handle_Bedfile(object):
     All the filtered regions are output to another
     bedfile which will be annotated with its problem
     (too small, too close, or too close to boundary).
+    
+    Definitions:
+    region :: (String, Int, Int)
+        - a 3-tuple recording the chromosome (together with name),
+          start position and end position of a regions specified
+          in the provided BED file.
+        - eg: ('chr16_PALB2', 1234, 2345)
+
+    small_regions :: {chromosome:[region]}
+        - a dictionary with key=chromosome and value 
+          containing regions that are below 
+          the specified size
+        - eg:
+           {'chr1':[('chr1_name11', 123, 234), ('chr1_name12', 236, 245')],
+            'chr2':[('chr2_name21', 5678, 6789)]}
+
+    closeby_regions :: {chromosome:[[region]]}
+        - a dictionary with key=chromosome and value
+          containing a list of list of region.
+          the inner most list contain regions that are
+          close (within specifed separation) to each other,
+          thus the length of the inner most list >=2.
+        - eg:
+           {'chr1':[
+                    [
+                     ('chr1_name11', 1234, 2345), 
+                     ('chr1_name12', 2346, 2555)
+                    ],
+                    [
+                     ('chr1_name13', 4567, 4678), 
+                     ('chr1_name14', 4680, 5600)
+                    ]
+                   ]
+            }
     """
     def __init__(self, bedfile_name, min_separation, min_region_size, 
                  want_merge=True, want_filter_small=True, want_filter_closeby=True):
         problem_bedfilename = '_'.join(os.path.basename(bedfile_name).split('.')[:-1] + ['problems.bed'])
         
+        # Initiallise dictionary which will be used to record
+        # problematic regions.
+        # A region might occur in both dictionary if it is both
+        # small and closeby
         small_regions = {}
         closeby_regions = {}
 
         original_regions = obtain_regions(bedfile_name)
 
+        # if user want to filter out small regions
+        # we retain a record of small regions in small_regions
+        # and produce another dictionary of regions
         if want_filter_small:
             processed = filter_small_regions(original_regions, min_region_size)
             filtered_regions_small = processed[0]
             small_regions = processed[1]
 
-
+        # if user want to filter closeby regions
+        # or if they specify that they want merging
+        # we will produce the filtered and closeby region dictionary
         if want_filter_closeby or want_merge:
             processed = filter_closeby_regions(original_regions, min_separation)
             filtered_regions_closeby = processed[0]
             closeby_regions = processed[1]
+
 
         if want_merge:
             # if user also wanted to filter small regions
@@ -126,6 +203,10 @@ class Handle_Bedfile(object):
                                              %(str(region), str(closeby_group)))
             merged_regions = merge_closeby_regions(closeby_regions)
 
+        # Now if any filtereing occured
+        # we will produce an annotated BEDfile containing all
+        # the problematic regions and their data 
+        # (size and separation if applicable) and problem annotation.
         if small_regions or closeby_regions:
             problems_output = []
             for chrom, closeby_list in closeby_regions.items():
@@ -146,6 +227,10 @@ class Handle_Bedfile(object):
                 writer = csv.writer(problem_bed, delimiter='\t')
                 map(writer.writerow, problems_output)
 
+
+        # Now that all potential filtering, merging and problem annotation
+        # had accured, we can begin assemble all regions that are suited
+        # for tiling.
         self.final_regions = original_regions
         if want_filter_closeby:
             self.final_regions = filtered_regions_closeby
@@ -165,14 +250,26 @@ class Handle_Bedfile(object):
 
                 
 def _problem_region_annotate(region, closeby=None, problem='sc'):
+    """
+    Take in a region and specification of its potential
+    problem (small, closeby or both) and generate
+    an annotated bedfile row output.
+    Annotations:
+        sc -> small and close (these regions will be processed)
+        c -> close
+        s -> small
+    eg:
+    >>> _problem_region_annotate(('chr1_name', 2330, 2345),
+                             closeby=[('chr1_name', 2330, 2345),
+                                      ('chr1_other', 2348, 2450)],
+                             problem='sc')
+    ('chr1', 2330, 2345, 'name', 15, [3], 'sc')
+    """
     chr_name, start, end = region
     first_underscore = chr_name.index('_')
     chr = chr_name[:first_underscore]
     name = chr_name[first_underscore+1:]
     if problem == 'sc' or problem == 'c':
-        # sc -> small and close (these regions will be processed)
-        # c -> close
-        # s -> small
         dist = ','.join(map(str, _distances(closeby)))
     else:
         dist = '-'
@@ -184,26 +281,6 @@ def _problem_region_annotate(region, closeby=None, problem='sc'):
 
 
 
-def regions_ref_seqs_generator(user_inputs):
-    final_regions = Handle_Bedfile(bedfile_name = user_inputs.bed,
-                                   min_separation = user_inputs.min_sep,
-                                   min_region_size = user_inputs.min_size,
-                                   want_merge = user_inputs.merge,
-                                   want_filter_small = user_inputs.filter_small,
-                                   want_filter_closeby = user_inputs.filter_closeby
-                                  ).final_regions
-    max_tile = user_inputs.tiles[1]
-    max_primer_len = user_inputs.primer_length + user_inputs.primer_length_var
-    fa_path = user_inputs.fa
-    (regions_and_ref_seqs,
-     boundary_regions) = get_all_ref_seq(final_regions, max_tile, max_primer_len, fa_path)
-    # Regions that are too close to the boundary are filtered out,
-    # warned about and ignored.
-    if boundary_regions:
-        logging.info("These regions are too close to chromosome's boundary: %s"
-                     %str(boundary_regions))
-    for region_ref_seq in regions_and_ref_seqs:
-        yield region_ref_seq
 
 
 def obtain_regions(bedfile):
@@ -313,6 +390,13 @@ def filter_closeby_regions(region_dict, min_separation):
     return filtered_regions, closeby_regions
 
 def merge_closeby_regions(closeby_regions):
+    """
+    Given a dictionary of closeby regions of the form
+        {chromosome:[[region]]} (see doc of Handle_Bedfile())
+    produce a another dictionary, merged_regions of the form
+       {chromosome:[region]}
+    which contain merged regions of the original dictionary.
+    """
     merged_regions = {}
     for chrom, closeby_list in closeby_regions.items():
         merged_regions[chrom] = []
@@ -381,6 +465,17 @@ def _region_len(region):
     return region[2] - region[1]
 
 def _distances(regions):
+    """
+    Given a list of region, return a list
+    of numbers representing the separation between
+    succesive pairs (hence the length of output list
+    will be len(regions) -1).
+    eg:
+    >>> _distance([('chr1_name1', 234, 300),
+                   ('chr1_name2', 303, 380),
+                   ('chr1_name3', 381, 500)])
+    [3, 1]
+    """
     distances_list = []
     for index in range(len(regions)-1):
         dist = regions[index+1][1] - regions[index][2]
@@ -389,6 +484,16 @@ def _distances(regions):
 
 
 def _merge_closeby_group(closeby_list):
+    """
+    Given a list of closeby regions of the form
+        [region]
+    produce a single merged region.
+    eg:
+    >>> _merge_closeby_group([('chr1_name1', 234, 300),
+                              ('chr1_name2', 303, 380),
+                              ('chr1_name3', 381, 500)])
+    ('chr1_name1_name2_name3', 234, 500)
+    """
     if len(closeby_list) >= 2:
         first, second = closeby_list[:2]
         merged_first = (_merge_name(first[0], second[0]),
