@@ -25,6 +25,9 @@ import random
 DEFAULT_OUTFILE = 'primer_analysis.tsv'
 NO_AUX_FILE = 'None'
 NO_FA = 'None'
+NO_BOXPLOT = ['']
+NO_PAIRPLOT = ['']
+NO_COLORING = ''
 DEFAULT_MATCH_SCORE = 2
 DEFAULT_MISMATCH_SCORE = -1
 DEFAULT_GAP_PENALTY = -1
@@ -32,6 +35,39 @@ DEFAULT_GAP_EXTENSION_PENALTY = -1
 DEFAULT_GAP_EXTENSION_DECAY = 0.0
 DEFAULT_END_MATCH_SCORE = 2
 
+
+
+################### Danny's Dimer scoring ############################
+
+from primer_dimer11_new import Score_gaps
+
+#!!! Danny's algorithm scoring parameters (not included in the module
+#!!! commandline parameters yet. Need manual modifications.
+SCORE_KEY = {'lastx':20, 'mm1':8, 'mm2':7, 'mm3':6,
+             'gc':4, 'at':2, 'mm':4, 'w':'yes', 'wx':1.0,
+             'gapping':'yes', 'tile':3, 'tf':1, 'loopl':4,
+             'loopu':10, 'stop':7, 'agg_thresh':0}
+d_score_dimer = lambda seq1, seq2: Score_gaps('', 
+                                              seq1.upper(), 
+                                              '', 
+                                              seq2.upper(), 
+                                              SCORE_KEY)[0]
+
+def one_to_all_score(primer, pool):
+    """
+    produce a dimer score (higher is bad) for primer against the
+    whole pool. using Danny's dimer prediction algorithm.
+    """
+    best_score = 0
+    query = rev_complement(primer)[:20]
+    for reference in pool:
+        score = d_score_dimer(query, reference)
+        if score > best_score:
+            best_score = score
+    return best_score
+
+
+#######################################################################
 def parse_args():
     parser = ArgumentParser(description='''Analysis tools for primer
                                           design output''')
@@ -54,9 +90,19 @@ def parse_args():
                         program. Default to %s'''%DEFAULT_OUTFILE)
     parser.add_argument('--pairplot', metavar='COLUMN_NAME',nargs='*',
                         type=str,
-                        default=[''],
-                        help='''string value to specify the columns in 
+                        default=NO_PAIRPLOT,
+                        help='''string values to specify the columns in 
                         primer data frame to be plotted in a pairplot''')
+    parser.add_argument('--color_with', metavar='CLASS', type=str,
+                        default=NO_COLORING,
+                        help='''The name of the column of column score
+                        with to classify (binary) the data points in
+                        the pairplot to above average and below avg''')
+    parser.add_argument('--boxplot', metavar='COLUMN_NAME', nargs='*',
+                        type=str,
+                        default=NO_BOXPLOT,
+                        help='''string values to specify the columns of
+                        primer data frame which are to be boxplotted.''')
     parser.add_argument('--match', metavar='SCORE', type=int,
                         default=DEFAULT_MATCH_SCORE,
                         help='''Match score for Smith Waterman alignment''')
@@ -75,6 +121,8 @@ def parse_args():
     parser.add_argument('--end_match', metavar='SCORE', type=int,
                         default=DEFAULT_END_MATCH_SCORE,
                         help='''The scoring weight for 3' end matches''')
+    parser.add_argument('-d', action='store_true',
+                        help='''Use Danny's dimer prediciton algorithm if specified''')
     return parser.parse_args()
 
 
@@ -93,24 +141,69 @@ def main():
                                         full_query=False)
     # produce data frames from the provided files
     primer_file = user_inputs.primer_file
-#        primer_file = os.path.join(user_inputs.dir, user_inputs.primer_file)
     primer_df = pd.read_csv(primer_file, sep='\t')
     
     # annotate data frames with dimer scores
-    # including swalign.score, 3' end scores, match, mismatch
-    annotate_dimer(primer_df, sw_aligner, user_inputs.end_match)
+    if user_inputs.d: #!!! use Danny's algorithm
+        pool = primer_df['sequence']
+        primer_df['dimer_score'] = map(lambda primer: one_to_all_score(primer, pool), pool)
+    else:
+        annotate_dimer(primer_df, sw_aligner, user_inputs.end_match)
+    # annotate each primer with it's dimer score rank
+    # higher rank, better dimer, worse primer.
+    primer_df['dimer_rank'] = rank(primer_df['dimer_score'])
+
+    # Annotate the off target rank as well if the the off target
+    # count is provided in column which has name
+    # either 'off' or 'off target'
+    # !!! this handles fergus and kplex mapping data files.
+    try:
+        primer_df['off_rank'] = rank(primer_df['off'])
+    except KeyError:
+        try:
+            primer_df['off_rank'] = rank(primer_df['off target'])
+        except KeyError:
+           pass 
+
+
     sys.stderr.write(str(primer_df.describe()))
     with open(user_inputs.outfile, 'w') as outfile:
         primer_df.to_csv(outfile, sep='\t')
-    if user_inputs.pairplot != ['']:
-        fig_name = user_inputs.outfile.split('.')[0] + '.png'
-        sns.pairplot(primer_df[user_inputs.pairplot])
-        plt.savefig(fig_name, format='png')
+
+
+    fig_name = user_inputs.outfile.split('.')[0]
+    if user_inputs.pairplot != NO_PAIRPLOT:
+        if user_inputs.color_with == NO_COLORING:
+            coloring = None
+        else: # if user wants coloring, produce the binary class first
+            coloring = user_inputs.color_with
+            hue_column = 'above_avg_' + coloring
+            primer_df[hue_column] = above_threshold(list(primer_df[coloring]))
+        sns.pairplot(data=primer_df, vars=user_inputs.pairplot, hue=hue_column)
+        plt.savefig(fig_name + '.png', format='png')
+    if user_inputs.boxplot != NO_BOXPLOT:
+        for column_name in user_inputs.boxplot:
+            plt.figure()
+            sns.boxplot(primer_df[column_name])
+            plt.savefig(fig_name+'_box_%s.png'%column_name, format='png')
+
     if user_inputs.aux_file != NO_AUX_FILE:
         aux_file = user_inputs.aux_file
         aux_df = pd.read_csv(aux_file, sep='\t')
         wastage_annotate(aux_df)
         sys.stderr.write(str(aux_df.describe()))
+        total = sum(aux_df['region_length'])
+        tiled = sum([count * mean 
+                     for count, mean in 
+                     zip(aux_df['tile_count'], aux_df['mean_tile'])])
+        wasted = tiled - total
+        assert wasted >= 0
+        sys.stderr.write('\n\nTotal region length: %i\n'%total)
+        sys.stderr.write('Total tiled length: %.1f\n'%tiled)
+        sys.stderr.write('Wasted tiling length: %.1f\n'%wasted)
+
+
+
 
 
 #################### Smith-Waterman Alignment #########################
@@ -182,11 +275,51 @@ def dimer_scoring(align_score, end_matches, match_mismatch, sequence, end_match_
                   - match_mismatch[1]/length)
 
 
+def rank(score_list):
+    """
+    Produces the 0-base ranks of a list of scores.
+    The higher the rank the higher the score.
+    eg:
+    >>> rank([1, 2, 4, 3])
+    [3, 2, 0, 1]
+    """
+    indexing = sorted(zip(score_list,range(len(score_list))), reverse = False)
+    result = [0 for i in range(len(score_list))]
+    for index in range(len(score_list)):
+        score, original_index = indexing[index]
+        result[original_index] = index
+    return result
+
+def above_threshold(score_list, threshold=None):
+    """
+    Produces a list of 1's and 0's representing
+    the truth value at the ith position in
+    the score_list whether score_list[i] > threshold.
+    1 -> True
+    0 -> False
+    If threshold = None, the mean is used as threshold
+    """
+    if threshold == None:
+        threshold = mean(score_list)
+    return [int(score > threshold) for score in score_list]
+
+def mean(scores):
+    """
+    Return the mean of scores
+    """
+    if scores:
+        return sum(scores)/float(len(scores))
+    else:
+        return 0
+
 def _gc_content(sequence):
     sequence = sequence.upper()
     length = float(len(sequence))
     gc_count = sequence.count('C') + sequence.count('G')
     return gc_count / length
+
+
+
 def _get_end_matches(cigar):
     """
     Given cigar input, return the number
@@ -203,7 +336,7 @@ def _get_end_matches(cigar):
 
 
 
-
+#!!! Unused
 def annotate_dimer_random_pool(primer_df, sw_aligner, align_proportion=0.5):
     """
     Mutate the given panda.DataFrame object so that it
@@ -274,15 +407,6 @@ def wastage_annotate(aux_df):
     aux_df['wastage'] = map(lambda x: x[1] - x[0],
                             zip(aux_df['region_length'],
                                 aux_df['covered_length']))
-
-
-
-#################### Primer Data Frames ##############################
-#
-#class Primer_Data_Frames(object):
-#    def __init__(self, primer_file=None, aux_file=None):
-#        self.primer_df = pd.read_csv(primer_file, sep='\t')
-#        self.aux_df = pd.read_csv(aux_file, sep='\t')
 
 
 if __name__ == '__main__':
