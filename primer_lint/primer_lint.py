@@ -4,7 +4,7 @@ statistics, graphs and annotated files for the output of
 primer_design tool for Hi-Plex. 
 
 The main function should take in (as command-line arguments)
-the result files for primer_designa and the name of the desired
+the result files for primer_design and the name of the desired
 output files to store the program.
 """
 
@@ -38,33 +38,35 @@ DEFAULT_END_MATCH_SCORE = 2
 
 
 ################### Danny's Dimer scoring ############################
+#!!! Danny's module have not been uploaded to Git Hub yet.
+try:
+    from primer_dimer11_new import Score_gaps
+    #!!! Danny's algorithm scoring parameters (not included in the module
+    #!!! commandline parameters yet. Need manual modifications.
+    SCORE_KEY = {'lastx':20, 'mm1':8, 'mm2':7, 'mm3':6,
+                 'gc':4, 'at':2, 'mm':4, 'w':'yes', 'wx':1.0,
+                 'gapping':'yes', 'tile':3, 'tf':1, 'loopl':4,
+                 'loopu':10, 'stop':7, 'agg_thresh':0}
+    d_score_dimer = lambda seq1, seq2: Score_gaps('', 
+                                                  seq1.upper(), 
+                                                  '', 
+                                                  seq2.upper(), 
+                                                  SCORE_KEY)[0]
 
-from primer_dimer11_new import Score_gaps
-
-#!!! Danny's algorithm scoring parameters (not included in the module
-#!!! commandline parameters yet. Need manual modifications.
-SCORE_KEY = {'lastx':20, 'mm1':8, 'mm2':7, 'mm3':6,
-             'gc':4, 'at':2, 'mm':4, 'w':'yes', 'wx':1.0,
-             'gapping':'yes', 'tile':3, 'tf':1, 'loopl':4,
-             'loopu':10, 'stop':7, 'agg_thresh':0}
-d_score_dimer = lambda seq1, seq2: Score_gaps('', 
-                                              seq1.upper(), 
-                                              '', 
-                                              seq2.upper(), 
-                                              SCORE_KEY)[0]
-
-def one_to_all_score(primer, pool):
-    """
-    produce a dimer score (higher is bad) for primer against the
-    whole pool. using Danny's dimer prediction algorithm.
-    """
-    best_score = 0
-    query = rev_complement(primer)[:20]
-    for reference in pool:
-        score = d_score_dimer(query, reference)
-        if score > best_score:
-            best_score = score
-    return best_score
+    def one_to_all_score(primer, pool):
+        """
+        produce a dimer score (higher is bad) for primer against the
+        whole pool. using Danny's dimer prediction algorithm.
+        """
+        best_score = 0
+        query = rev_complement(primer)[:20]
+        for reference in pool:
+            score = d_score_dimer(query, reference)
+            if score > best_score:
+                best_score = score
+        return best_score
+except ImportError:
+    pass
 
 
 #######################################################################
