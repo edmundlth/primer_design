@@ -90,6 +90,7 @@ class Dp_search(object):
         end_search_index = (max_primer_len 
                             + 2 * (self.max_tile -1) 
                             + self.region_length -1) #+1 for exclusive end
+        region_end_index = end_search_index - (self.max_tile -1)
         for pos in range(start_search_index, end_search_index +1):
             # Initialise the best_result to their null values
             # The final best_result is the best choice 
@@ -102,15 +103,14 @@ class Dp_search(object):
             #      tile_count for this solution starting at this pos, 
             #      best_forward, 
             #      best_reverse)
-            best_result = (0, 0, 0, 0, None, None)
+            best_result = (-10000, 0, 0, 0, None, None)
             for t_size in self.tile_sizes:
-                region_end_index = end_search_index - (self.max_tile -1)
                 tile_start_index = pos - t_size +1
                 if tile_start_index <= region_end_index: #if still overlap
                     tile = (tile_start_index, t_size)
                     # select best f and r primers of this tile
                     tile_score, f_primer, r_primer = self.best_primers_in_tile(tile)
-                    for overlap in range(self.allowed_overlap):
+                    for overlap in range(self.allowed_overlap +1):
                         # access the score of all the tiles before
                         # given the choice of current tile
                         #              p    
@@ -142,8 +142,8 @@ class Dp_search(object):
         forward and reverse primers (best with respect to their length)
         '''
         #logging.info('Start choosing best primers in tile %s'%str(tile))
-        best_f_score = 0
-        best_r_score = 0
+        best_f_score = -10000
+        best_r_score = -10000
         tile_start, t_size = tile
         tile_end = tile_start + t_size -1
         var = self.primer_length_var
@@ -158,7 +158,7 @@ class Dp_search(object):
                 f_scores = self.primer_memo[f_primer]
             else:
                 f_sequence = get_primer_seq(self.reference, f_primer)
-                f_scores = self.score_primer(f_sequence, direction='f')
+                f_scores = self.score_primer(f_sequence)
                 self.primer_memo[f_primer] = f_scores
 
             # deal with reverse primer
@@ -167,7 +167,7 @@ class Dp_search(object):
                 r_scores = self.primer_memo[r_primer]
             else:
                 r_sequence = get_primer_seq(self.reference, r_primer)
-                r_scores = self.score_primer(r_sequence, direction='r')
+                r_scores = self.score_primer(r_sequence)
                 self.primer_memo[r_primer] = r_scores
 
             if f_scores[0] > best_f_score:
@@ -199,22 +199,7 @@ def get_primer_seq(reference, primer_specification):
     elif direction == 'r':
         seq = reference[three_prime_pos: three_prime_pos + length]
         # return the reverse complement if the primer is a reverse primer
-        return rev_complement(seq)
-
-
-def _get_reference(fa_path, chrom):
-    """
-    Intended as a function used when initialising the Dp_search class.
-    (see __init__) It returns the whole sequence of chromosome
-    of concern in this Dp_search object
-    """
-    file_path = os.path.join(fa_path, chrom + '.fa')
-    seq_read = SeqIO.read(file_path, 'fasta')
-
-    # This function requires that each fasta file contains
-    # a single chromosome only and the file name is consitent
-    # with the chromosome name (the first column of BED-file)
-    return seq_read.seq
+        return seq #rev_complement(seq)
 
 
 def pick_primer_set(searcher, score_correction_exponent):
@@ -230,7 +215,7 @@ def pick_primer_set(searcher, score_correction_exponent):
     # look from the end of pos_memo until it hits
     # the end of the region and determine the best starting position
     best_reverse_start = None # this will be a negative integer
-    best_start_score = 0
+    best_start_score = -10000
     for pos in range(-1, -searcher.max_tile -1, -1):
         pos_info = searcher.pos_memo[pos]
         pos_score, pos_tile_count = pos_info[0], pos_info[3]
@@ -238,9 +223,9 @@ def pick_primer_set(searcher, score_correction_exponent):
         if adjusted_score > best_start_score:
             best_start_score = adjusted_score
             best_reverse_start = pos
-            logging.info('pos:%s, tile: %s, score: %s, avg: %s\n'
+            logging.info('pos:%s, tile: %s, score: %s, avg: %s'
                     %(pos, pos_tile_count, pos_score, adjusted_score))
-    logging.info('region_len:%s, best_start_score: %s, best_pos: %s\n\n'
+    logging.info('region_len:%s, best_start_score: %s, best_pos: %s'
             %(searcher.region_length, best_start_score, best_reverse_start))
 
     region_size_remaining = searcher.region_length \
@@ -249,6 +234,7 @@ def pick_primer_set(searcher, score_correction_exponent):
                              # reverse_start is negative
 
     position = best_reverse_start
+    empirical_tile_count = 0
     # while we are still in the region
     # notice the definition of "region" is loosen to include
     # the overhang of the last tile
@@ -265,8 +251,10 @@ def pick_primer_set(searcher, score_correction_exponent):
                     this will go into infinite loop''')
 
         position -= (tile_size - overlap)
+        empirical_tile_count +=1 
         searcher.aux_data['tiles'].append(tile_size)
         searcher.aux_data['overlap'].append(overlap)
+    logging.info("Empirical Tile count: %i"%empirical_tile_count)
 
 
 

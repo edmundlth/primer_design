@@ -368,13 +368,23 @@ def parse_args():
 
     scoring_args = parser.add_argument_group('Scoring parameters',
             "Parameters used to score primers during search")
-    scoring_args.add_argument('--score_func', metavar='P_NORM_VAL',
-                              type=int, default=DEFAULT_SCORE_FUNC,
-                              choices=[1,2],
-                              help='''A number specifying the p value in 
-                              the Lp-norm used. In particular, p=1 reduces to
-                              a linear sum. 
-                              Default to %s'''%DEFAULT_SCORE_FUNC)
+    scoring_args.add_argument('--score_func', metavar='STATS_MODEL',
+                              type=str,
+                              choices=['normal', 'empirical'],
+                              help='''Specify the scoring scheme to be used.
+                              If 'normal' is chosen, all data will be assume
+                              to have normal distribution and scores would be
+                              base on "number of standard deviation from the mean".
+                              If 'empirical' is chosen, the empirical distribution
+                              of all the data will be built and scores would be
+                              base on the percentile''')
+#    scoring_args.add_argument('--score_func', metavar='P_NORM_VAL',
+#                              type=int, default=DEFAULT_SCORE_FUNC,
+#                              choices=[1,2],
+#                              help='''A number specifying the p value in 
+#                              the Lp-norm used. In particular, p=1 reduces to
+#                              a linear sum. 
+#                              Default to %s'''%DEFAULT_SCORE_FUNC)
     scoring_args.add_argument('--tm_weight', metavar='WEIGHT',
                               type=float, default=DEFAULT_TM_WEIGHT,
                               help='''A positive real number specifying
@@ -528,7 +538,6 @@ def primer_design(user_inputs):
     """
     # handle the user input regarding scoring
     # the score function that will be used
-    score_func = Score(user_inputs).score_func
     with open(user_inputs.outfile, 'w') as outfile:
         with open(user_inputs.auxfile, 'w') as auxfile:
             aux_header = header = ['chrom', 'region_start', 'region_end', 
@@ -557,7 +566,9 @@ def primer_design(user_inputs):
                                                             score_func)
             #multi = Pool(2)
             # This will become multiprocess.map when the pickling has been handled
-            processed = map(process, regions_ref_seqs_generator(user_inputs))
+            all_regions_ref_seq = [item for item in regions_ref_seqs_generator(user_inputs)]
+            score_func = Score(user_inputs, all_regions_ref_seq).score_func
+            processed = map(process, all_regions_ref_seq)
             map(lambda searcher: write_primer(out_writer, searcher, correction_exponent),
                 processed)
             map(lambda searcher: write_aux(aux_writer, searcher), processed)

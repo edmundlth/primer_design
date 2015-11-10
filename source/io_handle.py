@@ -67,7 +67,7 @@ def write_primer(out_writer, searcher, score_correction_exponent):
                    + r_score_data
 
         map(out_writer.writerow, [f_output, r_output])
-    logging.info("Finish writing primers of %s %s %s to file"
+    logging.info("Finish writing primers of %s %s %s to file\n"
                   %(searcher.region_name, 
                     searcher.region_start, 
                     searcher.region_end))
