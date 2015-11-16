@@ -3,7 +3,7 @@ import sys
 import os
 import csv
 from Bio import SeqIO
-from utils import mean, std_deviation
+from utils import mean, std
 from primer_search import pick_primer_set, get_primer_seq
 
 def write_aux(aux_writer, searcher):
@@ -18,7 +18,7 @@ def write_aux(aux_writer, searcher):
     output = [searcher.chrom, searcher.region_start,
               searcher.region_end, searcher.region_length,
               searcher.time_taken, mean(tiles),
-              len(tiles), std_deviation(tiles),
+              len(tiles), std(tiles),
               mean(overlap), num_primers]
     aux_writer.writerow(output)
 
@@ -412,9 +412,17 @@ def merge_closeby_regions(closeby_regions):
                       str(_distances(closeby_group))))
     return merged_regions
 
-def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
+def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_filename):
     regions_and_reference = []
     boundary_regions = {}
+    reference_parser = SeqIO.parse(fa_filename, 'fasta')
+    ref_sequences = {}
+    for read in reference_parser:
+        chrom = read.name
+        if chrom in region_dict:
+            ref_sequences[chrom] = str(read.seq).upper()
+            logging.info("Aquired %s sequence"%chrom)
+    
     for chrom, region_list in region_dict.items():
         if region_list:
             first_region = region_list[0]
@@ -422,9 +430,19 @@ def get_all_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
         else:
             logging.info("No region of interest in %s"%chrom)
             continue
-        chrom_file_path = os.path.join(fa_path, chrom + '.fa')
-        chrom_sequence = SeqIO.read(chrom_file_path, 'fasta').seq
+
+        #!! Parsing reference sequence procedure has changed
+        #!! since we need the whole genome to be in a single
+        #!! fasta file for BWA specificity check.
+        #chrom_file_path = os.path.join(fa_path, chrom + '.fa')
+        #chrom_sequence = SeqIO.read(chrom_file_path, 'fasta').seq
+        #chrom_len = len(chrom_sequence)
+        if chrom not in ref_sequences:
+            continue
+        chrom_sequence = ref_sequences[chrom]
         chrom_len = len(chrom_sequence)
+
+
         region_list.sort(key = lambda x:x[1]) # sort using start coord
         # Give warning if region is too close to the chromosome boundary
         # Only check the first and last region in a given chromosome
@@ -527,189 +545,4 @@ def _merge_name(name1, name2):
     new_name = chrom + '_' + '_'.join(set(name1[1:] + name2[1:]))
     return new_name
 
-
-#
-#def regions_ref_seqs_generator_depreciated(bedfile, user_inputs):
-#    """
-#    Yields ((chrom_<name>, start pos, end pos), ref sequence)
-#    eg : ((chr16_PALB2, 12345, 12357), ATTGCATGGCGT)
-#    """
-#    want_merging = user_inputs.merge
-#    filter_small = user_inputs.filter_small
-#    max_tile = user_inputs.tiles[1]
-#    max_primer_len = user_inputs.primer_length + user_inputs.primer_length_var
-#    fa_path = user_inputs.fa
-#    all_regions = obtain_regions(bedfile)
-#    # closeby regions filtering:
-#    # This is checked and warnings are written to log file.
-#    # These regions are merged if user opted to merge them
-#    (filtered_regions,
-#     closeby_regions) = filter_closeby_regions(all_regions, max_tile, max_primer_len)
-#    if want_merging:
-#        num_closeby_regions = sum(sum(len(regions) for regions in region_list) 
-#                                  for chrom, region_list in closeby_regions.items())
-#        # merge and put them back to respective chrom region list
-#        merged_regions = merge_closeby_regions(closeby_regions)
-#        for chrom, merged in merged_regions.items():
-#            filtered_regions[chrom].extend(merged)
-#        num_merged_regions = sum(len(regions) for chrom, regions in merged_regions.items())
-#        logging.info('Finish merged %i regions into %i regions'
-#                     %(num_closeby_regions, num_merged_regions))
-#    if filter_small:
-#        how_small = int(0.5 * max_tile)
-#        (filtered_regions,
-#                small_regions) = filter_small_regions(filtered_regions, how_small)
-#        logging.info("Regions that are smaller than %i\n"%how_small)
-#        for chrom, regions in small_regions.items():
-#            logging.info("%s filtered %i regions, lengths: %s"
-#                             %(chrom, len(regions), str(map(_region_len,regions))))
-#        total_filtered = sum(len(regions) for chrom, regions in small_regions.items())
-#        total_left = sum(len(regions) for chrom, regions in filtered_regions.items())
-#        total = total_filtered + total_left
-#        logging.info('filtered %i out of %i, percentage = %.2f\n\n'
-#                         %(total_filtered, total, 100*total_filtered/float(total)))
-#
-#    (regions_and_ref_seqs,
-#     boundary_regions) = get_all_ref_seq(filtered_regions, max_tile, max_primer_len, fa_path)
-#    # Regions that are too close to the boundary are filtered out,
-#    # warned about and ignored.
-#    if boundary_regions:
-#        logging.info("These regions are too close to chromosome's boundary: %s"
-#                     %str(boundary_regions))
-#    for region_ref_seq in regions_and_ref_seqs:
-#        yield region_ref_seq
-#
-#
-#def filter_boundary_regions(region_dict, max_tile, max_primer_len):
-#    """
-#    A function that produces warning about regions that are too
-#    close to the background chromosome's boundary. 
-#    A regions need to be at least max_tile -1 + max_primer_len
-#    away from the boundary at both ends to have enough margin
-#    for primer search.
-#    These regions are isolated from the region_list of the 
-#    chromosome into a another region dictionary
-#    """
-#    boundary_regions = {}
-#    for chrom, region_list in region_dict.items():
-#        region_list.sort(key = lambda x:x[1]) # sort using start coord
-#        # Give warning if region is too close to the chromosome boundary
-#        # Only check the first and last region in a given chromosome
-#        first_region = region_list[0]
-#        last_region = region_list[-1]
-#        # Notice that first and last region might be the same if
-#        # there is only one region in this particular chromosome.
-#        min_margin = max_tile + max_primer_len -1
-#        if first_region[1] < min_margin:
-#            # move the first element of region_list to boundary_regions
-#            region_list = region_list[1:]
-#            boundary_regions[chrom] = [first_region]
-#            # then give warning
-#            logging.info("""WARNING: %s is too close to left boundary.\n
-#                    Require at least %i margin\nbut actual margin is:%i
-#                    """%(first_region, min_margin, first_region[1]))
-#        if chrom_len - last_region[2] < min_margin:
-#            # move last element to boundary_regions
-#            region_list.pop()
-#            if boundary_regions[chrom]:
-#                boundary_regions[chrom].append(last_region)
-#            else:
-#                boundary_regions[chrom] = [last_region]
-#            logging.info("""WARNING: %s is too close to right boundary
-#                    at %i.\n
-#                    Require at least %i margin\nbut actual margin is:%i\n
-#                    """%(last_region,
-#                        chrom_len-1,
-#                        min_margin,
-#                        last_region[1]))
-#    return region_dict, boundary_regions
-#
-#def get_regions_and_ref_seq(region_dict, max_tile, max_primer_len, fa_path):
-#    """
-#    Let S = starting index of region from the start of 
-#    the chromosome and let '-' denote bases outside of region and
-#    '*' denote bases in region.
-#    We require S >= max_tile + max_primer_len -1
-#    The edge case is shown below:
-#                               S
-#           0 1 2 3 4 5 6 7 8 9 10
-#         | - - - - - - - - - - * * * * * * * * * * *
-#                     ===========    # max_tile = 6, need 1 base intersect
-#           -------->                # max_primer_len = 5
-#    Similar condition is imposed for the other end of the chromosome.
-#
-#    Also, we require that the distant between 2 regions, L to satisfy
-#        L >= 2 * (max_tile -1) + max_primer_len +1
-#    so that the primers between the regions will never overlap 
-#    completely. (DO WE WANT NOT OVERLAP AT ALL??)
-#    The edge case is shown below:
-#                  <-- 
-#            ======    ======        
-#                   -->
-#        *****--------------******
-#    """
-#    regions_and_reference = []
-#    for chrom, region_list in region_dict.items():
-#        chrom_file_path = os.path.join(fa_path, chrom + '.fa')
-#        chrom_sequence = SeqIO.read(chrom_file_path, 'fasta').seq
-#        chrom_len = len(chrom_sequence)
-#        region_list.sort(key = lambda x:x[1])
-#        num_region = len(region_list)
-#
-#        # Merge regions which are too close together
-#        region_index = 0
-#        while region_index < num_region:
-#            num_merged = 1 # Merging A with itself count as 1
-#            current_region = region_list[region_index]
-#            while region_index + num_merged < num_region:
-#                next_region = region_list[region_index+num_merged]
-#                distance = next_region[1] - current_region[2]
-#                # Give warning for repeated or overlapping regions
-#                if distance < 0:
-#                    logging.info("""WARNING: repeated or overlapping region:
-#                    %s and %s"""%(str(current_region), str(next_region)))
-#                min_separation = 2 * (max_tile -1) + 1.5 * max_primer_len 
-#                if distance < min_separation:
-#                    new_name = _merge_name(current_region[0], next_region[0])
-#                    # new name joins the bedspecified name of both regions
-#                    # if the names are the same, only one of them is used
-#                    new_start = current_region[1]
-#                    new_end = next_region[2]
-#                    logging.info("MERGED: %s and %s\ndistance: %i"
-#                                 %(current_region, next_region, distance))
-#                    current_region = (new_name, new_start, new_end)
-#                    logging.info("NEW REGION: %s"%str(current_region))
-#                    num_merged +=1
-#                else:
-#                    break
-#
-#                # obtain reference by slicing chrom sequence
-#                # Reference = union of 
-#                #       1) Region
-#                #       2) Max_tile_size -1 + max_primer_len on both side
-#                # reference is obtained here to avoid reading seq again later.
-#                #    ----->=====       =====<----- 
-#                #              *********
-#            ref_start = current_region[1] - max_tile - max_primer_len +1
-#            ref_end = current_region[2] + max_tile + max_primer_len
-#            ref_seq = str(chrom_sequence[ref_start:ref_end])
-#            regions_and_reference.append((current_region, ref_seq))
-#            region_index += num_merged
-#    return regions_and_reference
-#
-
-#def handle_bedfile(bedfile):
-#    file = open(bedfile)
-#    reader = csv.reader(file,delimiter='\t')
-#    bed_row = []
-#    for line in reader:
-#        chromo, start, end, name = line 
-#        start, end = map(int, [start, end])
-#        # we dont want underscore character in the bed specified naming
-#        # to interfere with our own naming convention
-#        bed_specified_name = name.split(',')[0].replace('_','')
-#        region_name = chromo + '_' + bed_specified_name 
-#        # last term is potentially [''], ie a list of single empty string
-#        bed_row.append((region_name, start, end))
-#    return bed_row
 

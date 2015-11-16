@@ -41,7 +41,8 @@ from Bio.SeqUtils.MeltingTemp import (Tm_NN,
                                       DNA_NN2, 
                                       DNA_NN3, 
                                       DNA_NN4)
-from utils import weighted_num_complement
+from utils import weighted_num_complement, mean, std, normalised_distance 
+from specificity import Specificity
 
 # Nearest neighbor thermodynamic data for Tm prediction
 # from a Biopython module
@@ -71,7 +72,7 @@ def raw_max_hairpin(seq, direction='f'):
     elif direction == 'r':
         seq = self.antisense_heel + seq
     else:
-        print('Warning: primer_direction not specified for hairpin prediction')
+        logging.info('Warning: primer_direction not specified for hairpin prediction')
         raise ValueError
     length = len(seq)
     score = 0
@@ -139,40 +140,29 @@ def raw_run(seq):
         max_run = run
     return max_run
 
-####################
-def quantile(val, sorted_data):
-    """Return the quantile of "val" in the sorted data"""
-    return sorted_data.index(val)/float(len(sorted_data))
+#################### Utilities ##################################
 
-def percentile_score(val, sorted_data):
-    """Return percentile of val in the sorted data"""
-    return quantile(val, sorted_data) * 100.0 - 50.0
+def get_all_primers(regions_and_ref_seqs, primer_length, primer_length_var):
+    """
+    regions_and_ref_seqs: [(regions coords, ref seq)]
+    Return a dictionary of all possbile primers given
+    the reference sequences
+    """
+    all_primers = {}
+    num_distinct_primers = 0
+    for region, ref_seq in regions_and_ref_seqs:
+        for pos in range(len(ref_seq)):
+            for var in range(-primer_length_var, primer_length_var +1):
+                primer = ref_seq[pos: pos + primer_length + var].upper()
+                if len(primer) == primer_length + var:
+                    if primer not in all_primers:
+                        num_distinct_primers += 1
+                        all_primers[primer] = []
+    logging.info("Number of all possible primers: %i"%num_distinct_primers)
+    return all_primers
 
-def mean(data):
-    """Calculate the mean of the given data -- a list
-    of numbers. If data is empty, 0 is returned"""
-    if data:
-        return sum(data) / float(len(data))
-    return 0.0
 
-def variance(data):
-    """Calculate the variance of data. Return 0.0 
-    if data is empty"""
-    if data:
-        mu = mean(data)
-        return sum((x - mu)**2 for x in data) / float(len(data))
-    return 0.0
 
-def std(data):
-    """Return the standard deviation of data"""
-    return variance(data) ** 0.5
-
-def normalised_distance(val, mean_std):
-    """Return the number (rational number allowed) of 
-    standard deviation of val from the mean.
-    mean_std == (mean, std)"""
-    mu, std = mean_std
-    return (val - mu)/ float(std)
 
 ####################
 
@@ -195,9 +185,13 @@ class Score(object):
         self.score_func = None
         # Initialise relevant informations for scoring 
         self.tm_func = None
+        self.user_inputs = user_inputs
         # Look up data tables for scoring
-        self.combined_data = {'tm':[], 'entropy':[], 'gc':[]}
-        self.primer_data = {}
+        self.combined_data = {'specificity':[], 'tm':[], 'entropy':[], 'gc':[]}
+        self.primer_data = get_all_primers(regions_and_ref_seqs,
+                                           user_inputs.primer_length,
+                                           user_inputs.primer_length_var)
+        #self.primer_data = {}
         # Parse user_inputs and assign them to relevant attribute
         self._define_functions(user_inputs, regions_and_ref_seqs)
         logging.info('Finished initialising Score object')
@@ -238,48 +232,72 @@ class Score(object):
 
         # Define scoring function by building a lookup table for it
         # first we score all possible primers
-        self._score_all_primers(regions_and_ref_seqs,
-                                user_inputs.primer_length,
-                                user_inputs.primer_length_var)
+        
+        self._collect_all_raw_scores()
+        #self._score_all_primers(regions_and_ref_seqs,
+        #                        user_inputs.primer_length,
+        #                        user_inputs.primer_length_var)
         if user_inputs.score_func == 'normal':
             self.score_func = self._create_normal_score_func()
         elif user_inputs.score_func == 'empirical':
             self.score_func = self._create_empirical_score_func()
 
 
-    def _score_all_primers(self, regions_ref_seqs, primer_length, primer_length_var):
-        """
-        After __init__ had finished parsing all user_inputs from commandline,
-        it will call this method to obtain all possible primers from the 
-        reference sequences provided by regions_ref_seqs and simultaneously
-        compute their relevant properties and store them in a dictionary
-        that map Sequence to tuples of their data.
-        """
+    def _collect_all_raw_scores(self):
         before = time()
-        num_distinct_primers = 0
-        for region, ref_seq in regions_ref_seqs:
-            for pos in range(len(ref_seq)):
-                for var in range(-primer_length_var, primer_length_var +1):
-                    primer = ref_seq[pos: pos + primer_length + var].upper()
-                    if len(primer) == primer_length + var:
-                        if primer not in self.primer_data:
-                            num_distinct_primers += 1
-                            tm, entropy, gc = (self.tm_func(primer), 
-                                               raw_entropy(primer), 
-                                               raw_gc(primer))
-                            self.primer_data[primer] = [tm, entropy, gc]
-                            self.combined_data['tm'].append(tm)
-                            self.combined_data['entropy'].append(entropy)
-                            self.combined_data['gc'].append(gc)
-        if not num_distinct_primers > 0:
-            logging.info("Warning: there is no primers to be scored")
-            raise RuntimeError
-        elif not all([len(lst) == num_distinct_primers for lst in self.combined_data.values()]):
-            logging.info("Warning: The number of data point doesn't equal num primers")
-            raise RuntimeError
-        logging.info("Finished scoring all %i primers in %s seconds"
-                     %(num_distinct_primers, time() - before))
+        self.primer_data = Specificity(self.user_inputs.fa, self.primer_data).primers
+        for primer in self.primer_data:
+            tm, entropy, gc = (self.tm_func(primer),
+                               raw_entropy(primer),
+                               raw_gc(primer))
+            specificity = self.primer_data[primer][0]
+            self.primer_data[primer] += [tm, entropy, gc]
+            self.combined_data['tm'].append(tm)
+            self.combined_data['entropy'].append(entropy)
+            self.combined_data['gc'].append(gc)
+            self.combined_data['specificity'].append(specificity)
+        logging.info("Finished collecting all raw data in %s"
+                     %(time() - before))
 
+
+
+
+
+
+#    def _score_all_primers(self, regions_ref_seqs, primer_length, primer_length_var):
+#        """
+#        After __init__ had finished parsing all user_inputs from commandline,
+#        it will call this method to obtain all possible primers from the 
+#        reference sequences provided by regions_ref_seqs and simultaneously
+#        compute their relevant properties and store them in a dictionary
+#        that map Sequence to tuples of their data.
+#        """
+#        before = time()
+#        num_distinct_primers = 0
+#        for region, ref_seq in regions_ref_seqs:
+#            for pos in range(len(ref_seq)):
+#                for var in range(-primer_length_var, primer_length_var +1):
+#                    primer = ref_seq[pos: pos + primer_length + var].upper()
+#                    if len(primer) == primer_length + var:
+#                        if primer not in self.primer_data:
+#                            num_distinct_primers += 1
+#                            tm, entropy, gc = (self.tm_func(primer), 
+#                                               raw_entropy(primer), 
+#                                               raw_gc(primer))
+#                            self.primer_data[primer] = [tm, entropy, gc]
+#                            self.combined_data['tm'].append(tm)
+#                            self.combined_data['entropy'].append(entropy)
+#                            self.combined_data['gc'].append(gc)
+#        if not num_distinct_primers > 0:
+#            logging.info("Warning: there is no primers to be scored")
+#            raise RuntimeError
+#        elif not all([len(lst) == num_distinct_primers for lst in self.combined_data.values()]):
+#            logging.info("Warning: The number of data point doesn't equal num primers")
+#            raise RuntimeError
+#        logging.info("Finished scoring all %i primers in %s seconds"
+#                     %(num_distinct_primers, time() - before))
+#
+    
 
     def _create_normal_score_func(self):
         """
@@ -292,12 +310,13 @@ class Score(object):
             mean_std[feature] = (mean(data), std(data))
         logging.info("%s"%(str(mean_std)))
         for primer in self.primer_data:
-            tm, entropy, gc = self.primer_data[primer]
-            scores = [normalised_distance(tm, mean_std['tm']),
+            specificity, tm, entropy, gc = self.primer_data[primer]
+            scores = [normalised_distance(specificity, mean_std['specificity']),
+                      normalised_distance(tm, mean_std['tm']),
                       normalised_distance(entropy, mean_std['entropy']),
                       normalised_distance(gc, mean_std['gc'])]
             primer_score = sum(scores)/ float(len(scores))
-            self.primer_data[primer] = [primer_score, tm, entropy, gc]
+            self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
         scoring_function= lambda seq: self.primer_data[seq.upper()]
         logging.info("Finished creating scoring function in %s"%(time() - before))
         return scoring_function
@@ -316,7 +335,7 @@ class Score(object):
         #!!! tm, entropy and gc). This amount to building up
         #!!! a lookup list which is a function that map a 
         #!!! value to the quantile it is in.
-        quantile_lookup = {'tm':{}, 'entropy':{}, 'gc':{}}
+        quantile_lookup = {'specificity':{}, 'tm':{}, 'entropy':{}, 'gc':{}}
         for feature, data in self.combined_data.items():
             data.sort()
             num_data = float(len(data))
@@ -337,13 +356,18 @@ class Score(object):
         """
         before = time()
         quantile_lookup = self._build_quantile_lookup()
+        missing_data_count = 0
         for primer in self.primer_data:
-            tm, entropy, gc = self.primer_data[primer]
-            scores = [quantile_lookup['tm'][tm],
-                      quantile_lookup['entropy'][entropy],
-                      quantile_lookup['gc'][gc]]
-            primer_score = sum(scores) / float(len(scores))
-            self.primer_data[primer] = [primer_score, tm, entropy, gc]
+            try:
+                specificity, tm, entropy, gc = self.primer_data[primer]
+                scores = [quantile_lookup['specificity'][specificity],
+                          quantile_lookup['tm'][tm],
+                          quantile_lookup['entropy'][entropy],
+                          quantile_lookup['gc'][gc]]
+                primer_score = sum(scores) / float(len(scores))
+                self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
+            except:
+                missing_data_count += 1
         scoring_function = lambda seq: self.primer_data[seq.upper()]
         logging.info("Finished creating scoring function in %s"%(time() - before))
         return scoring_function

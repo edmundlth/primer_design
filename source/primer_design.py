@@ -546,7 +546,7 @@ def primer_design(user_inputs):
                                    'std_deviation_tile', 'mean_overlap',
                                    'num_primers_scored']
             outfile_header = ['name', 'start', 'end', 'sequence', 'length',
-                              'score', 'tm', 'entropy', 'hairpin',
+                              'score', 'specificity', 'tm', 'entropy', 'hairpin',
                               'gc', 'gc_clamp', 'run']
             out_writer = csv.writer(outfile,delimiter='\t')
             aux_writer = csv.writer(auxfile, delimiter='\t')

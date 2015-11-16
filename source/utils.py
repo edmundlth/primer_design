@@ -33,33 +33,51 @@ def is_complement(base1,base2):
         return False
 
 
-complement = {'A':'T','G':'C','C':'G','T':'A'}
+complement_bases = {'A':'T','G':'C','C':'G','T':'A'}
 def rev_complement(seq):
     """
     Return the reverse complement of seq
     """
-    seq = seq.upper()
-    return ''.join(complement[base] for base in seq)[::-1]
+    return complement(seq)[::-1]
 
-def mean(sequence):
+def complement(seq):
     """
-    Calculate the average of sequence.
-    If sequence is empty, return 0.0
+    return the complement of seq
     """
-    if sequence:
-        return sum(sequence)/float(len(sequence))
-    else:
-        return 0.0
+    return ''.join(complement_bases[b] for b in seq.upper())
 
-def std_deviation(sequence):
-    """
-    Calculate the standard deviation of a sequence of number
-    if sequence is empty, return 0.0
-    """
-    if sequence:
-        x_bar = mean(sequence)
-        square_deviation = sum([(x - x_bar)**2 for x in sequence])
-        variance = square_deviation / float(len(sequence))
-        return variance ** 0.5
-    else:
-        return 0.0
+############################ Statistics ########################
+def quantile(val, sorted_data):
+    """Return the quantile of "val" in the sorted data"""
+    return sorted_data.index(val)/float(len(sorted_data))
+
+def percentile_score(val, sorted_data):
+    """Return percentile of val in the sorted data"""
+    return quantile(val, sorted_data) * 100.0 - 50.0
+
+def mean(data):
+    """Calculate the mean of the given data -- a list
+    of numbers. If data is empty, 0 is returned"""
+    if data:
+        return sum(data) / float(len(data))
+    return 0.0
+
+def variance(data):
+    """Calculate the variance of data. Return 0.0 
+    if data is empty"""
+    if data:
+        mu = mean(data)
+        return sum((x - mu)**2 for x in data) / float(len(data))
+    return 0.0
+
+def std(data):
+    """Return the standard deviation of data"""
+    return variance(data) ** 0.5
+
+def normalised_distance(val, mean_std):
+    """Return the number (rational number allowed) of 
+    standard deviation of val from the mean.
+    mean_std == (mean, std)"""
+    mu, std = mean_std
+    return (val - mu)/ float(std)
+
