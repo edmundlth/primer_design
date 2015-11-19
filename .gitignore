@@ -3,3 +3,11 @@
 *.log
 *.swp
 *.bed
+/primer_design
+*.tsv
+*.sa?
+*.ba?
+*.png
+*.fa
+*.sw?
+*.ipynb

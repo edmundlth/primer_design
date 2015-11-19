@@ -34,7 +34,7 @@ DEFAULT_GAP_PENALTY = -1
 DEFAULT_GAP_EXTENSION_PENALTY = -1
 DEFAULT_GAP_EXTENSION_DECAY = 0.0
 DEFAULT_END_MATCH_SCORE = 2
-
+DEFAULT_DIMER_CHECK = 'none'
 
 
 ################### Danny's Dimer scoring ############################
@@ -121,34 +121,43 @@ def parse_args():
     parser.add_argument('--end_match', metavar='SCORE', type=int,
                         default=DEFAULT_END_MATCH_SCORE,
                         help='''The scoring weight for 3' end matches''')
-    parser.add_argument('-d', action='store_true',
-                        help='''Use Danny's dimer prediciton algorithm if specified''')
+    parser.add_argument('--dimer_check', metavar='ALGORITHM', type=str,
+                        default=DEFAULT_DIMER_CHECK, 
+                        choices=['sw', 'd', 'bwa', 'none'],
+                        help='''Use ALGORITHM for dimer checking
+                        The choices are 
+                        (1) 'sw' -- Smith-Waterman alinger
+                        (2) 'd' -- Danny's dimer prediction algorithm
+                        (3) 'bwa' -- bwa aligner
+                        (4) 'none' -- no dimer check''')
     return parser.parse_args()
 
 
 def main():
-    # parse user inputs and initialise swaligner object
     user_inputs = parse_args()
-    sw_aligner = swalign.LocalAlignment(swalign.NucleotideScoringMatrix(user_inputs.match,
-                                                                        user_inputs.mismatch),
-                                        gap_penalty=user_inputs.gap_penalty,
-                                        gap_extension_penalty=user_inputs.gap_extension_penalty,
-                                        gap_extension_decay=user_inputs.gap_extension_decay,
-                                        prefer_gap_runs=True,
-                                        verbose=False,
-                                        globalalign=False,
-                                        wildcard=None,
-                                        full_query=False)
     # produce data frames from the provided files
     primer_file = user_inputs.primer_file
     primer_df = pd.read_csv(primer_file, sep='\t')
     
     # annotate data frames with dimer scores
-    if user_inputs.d: #!!! use Danny's algorithm
+    if user_inputs.dimer_check == 'd': #!!! use Danny's algorithm
         pool = primer_df['sequence']
         primer_df['dimer_score'] = map(lambda primer: one_to_all_score(primer, pool), pool)
-    else:
+    elif user_inputs.dimer_check == 'sw':
+        sw_aligner = swalign.LocalAlignment(
+                swalign.NucleotideScoringMatrix(user_inputs.match,
+                                                user_inputs.mismatch),
+                gap_penalty=user_inputs.gap_penalty,
+                gap_extension_penalty=user_inputs.gap_extension_penalty,
+                gap_extension_decay=user_inputs.gap_extension_decay,
+                prefer_gap_runs=True,
+                verbose=False,
+                globalalign=False,
+                wildcard=None,
+                full_query=False)
         annotate_dimer(primer_df, sw_aligner, user_inputs.end_match)
+    elif user_inputs.dimer_check == 'bwa':
+        pass
     # annotate each primer with it's dimer score rank
     # higher rank, better dimer, worse primer.
     primer_df['dimer_rank'] = rank(primer_df['dimer_score'])
@@ -175,11 +184,13 @@ def main():
     if user_inputs.pairplot != NO_PAIRPLOT:
         if user_inputs.color_with == NO_COLORING:
             coloring = None
+            hue_column = None
         else: # if user wants coloring, produce the binary class first
             coloring = user_inputs.color_with
             hue_column = 'above_avg_' + coloring
             primer_df[hue_column] = above_threshold(list(primer_df[coloring]))
-        sns.pairplot(data=primer_df, vars=user_inputs.pairplot, hue=hue_column)
+        print(primer_df)
+        sns.pairplot(data=primer_df, vars=user_inputs.pairplot, hue=hue_column, diag_kind="kde")
         plt.savefig(fig_name + '.png', format='png')
     if user_inputs.boxplot != NO_BOXPLOT:
         for column_name in user_inputs.boxplot:

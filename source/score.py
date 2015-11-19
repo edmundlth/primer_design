@@ -26,7 +26,6 @@ Description:
         scoring all possible primers.
         The score of a primer would be given by its percentile
         in the empirical distribution.
-
 """
 
 
@@ -49,6 +48,186 @@ from specificity import Specificity
 # Refer to 
 # http://biopython.org/DIST/docs/api/Bio.SeqUtils.MeltingTemp-module.html
 THERMO_TABLES = [DNA_NN1, DNA_NN2, DNA_NN3, DNA_NN4]
+
+
+
+class Score(object):
+    """
+    This class handles the user inputs and produces method for primer
+    scoring. 
+    It takes in user commandline input from running primer_design,
+    extract relevant information about users' preference, specification
+    of reaction condition, and then initialise a scoring function
+    based on them. 
+    """
+    def __init__(self, user_inputs, regions_and_ref_seqs):
+        """
+        Initialise Score class base on user_inputs.
+        After initialisation, score_func and tm_func would be
+        defined and can be used in the DP_search process.
+        """
+        self.score_func = None
+        # Initialise relevant informations for scoring 
+        self.tm_func = None
+        self.target_tm = user_inputs.target_tm
+        self.score_weights = [user_inputs.specificity_weight,
+                              user_inputs.tm_weight,
+                              user_inputs.entropy_weight,
+                              user_inputs.gc_weight]
+        # Look up data tables for scoring
+        self.combined_data = {'specificity':[], 'tm':[], 'entropy':[], 'gc':[]}
+        self.primer_data = get_all_primers(regions_and_ref_seqs,
+                                           user_inputs.primer_length,
+                                           user_inputs.primer_length_var)
+        #self.primer_data = {}
+        # Parse user_inputs and assign them to relevant attribute
+        self._define_functions(user_inputs, regions_and_ref_seqs)
+        logging.info('Finished initialising Score object')
+
+    def _define_functions(self, user_inputs, regions_and_ref_seqs):
+        """
+        This private method is used to initialised the Score class.
+        It parses user_inputs, decide which tm_prediciton function to
+        use and then provide the relevant parameters from user_inputs
+        to the tm_prediciton functions.
+        It also parse user choice of scoring and then build (define)
+        a function that scores primers base on statistical methods.
+        """
+        # Define tm prediction function to be used.
+        tm_func_choice = user_inputs.tm_func
+        target_tm = user_inputs.target_tm
+        if tm_func_choice == "Tm_NN":
+            self.tm_func = lambda seq : Tm_NN(seq, 
+                                              Na = user_inputs.Na,
+                                              K = user_inputs.K,
+                                              Mg = user_inputs.Mg,
+                                              Tris = user_inputs.Tris,
+                                              dNTPs = user_inputs.dNTPs,
+                                              nn_table=THERMO_TABLES[user_inputs.NN_table-1],
+                                              dnac1 = user_inputs.dnac1,
+                                              dnac2 = user_inputs.dnac2,
+                                              saltcorr = user_inputs.saltcorr)
+        elif tm_func_choice == "Tm_GC":
+            self.tm_func = lambda seq : Tm_GC(seq,
+                                              Na = user_inputs.Na,
+                                              K = user_inputs.K,
+                                              Mg = user_inputs.Mg,
+                                              Tris = user_inputs.Tris,
+                                              dNTPs = user_inputs.dNTPs,
+                                              saltcorr = user_inputs.saltcorr)
+
+        elif tm_func_choice == "Tm_Wallace":
+            self.tm_func = Tm_Wallace
+
+        # Define scoring function by building a lookup table for it
+        # first we score all possible primers
+        
+        self._collect_all_raw_scores(user_inputs.fa)
+        #self._score_all_primers(regions_and_ref_seqs,
+        #                        user_inputs.primer_length,
+        #                        user_inputs.primer_length_var)
+        if user_inputs.score_func == 'normal':
+            self.score_func = self._create_normal_score_func()
+        elif user_inputs.score_func == 'empirical':
+            self.score_func = self._create_empirical_score_func()
+
+
+    def _collect_all_raw_scores(self, reference_fasta):
+        before = time()
+        self.primer_data = Specificity(reference_fasta, self.primer_data).primers
+        for primer in self.primer_data:
+            tm, entropy, gc = (self.tm_func(primer),
+                               raw_entropy(primer),
+                               raw_gc(primer))
+            specificity = self.primer_data[primer][0]
+            self.primer_data[primer] += [tm, entropy, gc]
+            self.combined_data['tm'].append(score_tm(tm, self.target_tm))
+            self.combined_data['entropy'].append(entropy)
+            self.combined_data['gc'].append(gc)
+            self.combined_data['specificity'].append(specificity)
+        logging.info("Finished collecting all raw data in %s"
+                     %(time() - before))
+
+
+    def _create_normal_score_func(self):
+        """
+        Return a function object which assume normality in
+        distribution of primer data.
+        """
+        before = time()
+        mean_std = {}
+        for feature, data in self.combined_data.items():
+            mean_std[feature] = (mean(data), std(data))
+        logging.info("%s"%(str(mean_std)))
+        for primer in self.primer_data:
+            specificity, tm, entropy, gc = self.primer_data[primer]
+            individual_scores = \
+                     [normalised_distance(specificity, mean_std['specificity']),
+                      normalised_distance(tm, mean_std['tm']),
+                      normalised_distance(entropy, mean_std['entropy']),
+                      normalised_distance(gc, mean_std['gc'])]
+            scores = [score * weight for score, weight 
+                      in zip(individual_scores, self.score_weights)]
+            primer_score = sum(scores)/ float(sum(self.score_weights))
+            self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
+        scoring_function= lambda seq: self.primer_data[seq.upper()]
+        logging.info("Finished creating scoring function in %s"%(time() - before))
+        return scoring_function
+
+    def _build_quantile_lookup(self):
+        """
+        This private method is called to build a lookup table
+        for each scoring feature we are interested in. The lookup
+        table is of the form:
+            {feature: {scoring data : percentile} }
+        This data structure is intended to speed up the process
+        of scoring primers by looking up its percentile score.
+        """
+        # First we build the empirical distribution of each 
+        #!!! features of the primers (currently they're just
+        #!!! tm, entropy and gc). This amount to building up
+        #!!! a lookup list which is a function that map a 
+        #!!! value to the quantile it is in.
+        quantile_lookup = {'specificity':{}, 'tm':{}, 'entropy':{}, 'gc':{}}
+        for feature, data in self.combined_data.items():
+            data.sort()
+            num_data = float(len(data))
+            current_val = data[0]
+            quantile_lookup[feature][current_val] = 0.0 - 50.0
+            # There's always at least one data guaranteed by _score_all_primers
+            for index in range(1, len(data)):
+                next_val = data[index]
+                if next_val != current_val:
+                    quantile_lookup[feature][next_val] = index * 100.0/ num_data -50.0
+                    current_val = next_val
+        return quantile_lookup
+
+    def _create_empirical_score_func(self):
+        """
+        Returns a function object that maps primers to
+        their empirical percentile score.
+        """
+        before = time()
+        quantile_lookup = self._build_quantile_lookup()
+        missing_data_count = 0
+        for primer in self.primer_data:
+            try:
+                specificity, tm, entropy, gc = self.primer_data[primer]
+                individual_scores = \
+                         [quantile_lookup['specificity'][specificity],
+                          quantile_lookup['tm'][score_tm(tm, self.target_tm)],
+                          quantile_lookup['entropy'][entropy],
+                          quantile_lookup['gc'][gc]]
+                scores = [score * weight for score, weight 
+                          in zip(individual_scores, self.score_weights)]
+                primer_score = sum(scores) / float(sum(self.score_weights))
+                self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
+            except:
+                missing_data_count += 1
+        scoring_function = lambda seq: self.primer_data[seq.upper()]
+        logging.info("Finished creating scoring function in %s"%(time() - before))
+        return scoring_function
+
 
 # Functions that map sequence to their relevant raw data.
 def raw_entropy(seq):
@@ -140,6 +319,13 @@ def raw_run(seq):
         max_run = run
     return max_run
 
+LARGE_NUMBER = 100000
+def score_tm(tm, target_tm):
+    del_tm = tm - target_tm
+    if del_tm != 0.0:
+        return 1/abs(del_tm)
+    else:
+        return LARGE_NUMBER
 #################### Utilities ##################################
 
 def get_all_primers(regions_and_ref_seqs, primer_length, primer_length_var):
@@ -165,209 +351,3 @@ def get_all_primers(regions_and_ref_seqs, primer_length, primer_length_var):
 
 
 ####################
-
-
-class Score(object):
-    """
-    This class handles the user inputs and produces method for primer
-    scoring. 
-    It takes in user commandline input from running primer_design,
-    extract relevant information about users' preference, specification
-    of reaction condition, and then initialise a scoring function
-    based on them. 
-    """
-    def __init__(self, user_inputs, regions_and_ref_seqs):
-        """
-        Initialise Score class base on user_inputs.
-        After initialisation, score_func and tm_func would be
-        defined and can be used in the DP_search process.
-        """
-        self.score_func = None
-        # Initialise relevant informations for scoring 
-        self.tm_func = None
-        self.user_inputs = user_inputs
-        # Look up data tables for scoring
-        self.combined_data = {'specificity':[], 'tm':[], 'entropy':[], 'gc':[]}
-        self.primer_data = get_all_primers(regions_and_ref_seqs,
-                                           user_inputs.primer_length,
-                                           user_inputs.primer_length_var)
-        #self.primer_data = {}
-        # Parse user_inputs and assign them to relevant attribute
-        self._define_functions(user_inputs, regions_and_ref_seqs)
-        logging.info('Finished initialising Score object')
-
-    def _define_functions(self, user_inputs, regions_and_ref_seqs):
-        """
-        This private method is used to initialised the Score class.
-        It parses user_inputs, decide which tm_prediciton function to
-        use and then provide the relevant parameters from user_inputs
-        to the tm_prediciton functions.
-        It also parse user choice of scoring and then build (define)
-        a function that scores primers base on statistical methods.
-        """
-        # Define tm prediction function to be used.
-        tm_func_choice = user_inputs.tm_func
-        if tm_func_choice == "Tm_NN":
-            self.tm_func = lambda seq : Tm_NN(seq, 
-                                              Na = user_inputs.Na,
-                                              K = user_inputs.K,
-                                              Mg = user_inputs.Mg,
-                                              Tris = user_inputs.Tris,
-                                              dNTPs = user_inputs.dNTPs,
-                                              nn_table=THERMO_TABLES[user_inputs.NN_table-1],
-                                              dnac1 = user_inputs.dnac1,
-                                              dnac2 = user_inputs.dnac2,
-                                              saltcorr = user_inputs.saltcorr)
-        elif tm_func_choice == "Tm_GC":
-            self.tm_func = lambda seq : Tm_GC(seq,
-                                              Na = user_inputs.Na,
-                                              K = user_inputs.K,
-                                              Mg = user_inputs.Mg,
-                                              Tris = user_inputs.Tris,
-                                              dNTPs = user_inputs.dNTPs,
-                                              saltcorr = user_inputs.saltcorr)
-
-        elif tm_func_choice == "Tm_Wallace":
-            self.tm_func = Tm_Wallace
-
-        # Define scoring function by building a lookup table for it
-        # first we score all possible primers
-        
-        self._collect_all_raw_scores()
-        #self._score_all_primers(regions_and_ref_seqs,
-        #                        user_inputs.primer_length,
-        #                        user_inputs.primer_length_var)
-        if user_inputs.score_func == 'normal':
-            self.score_func = self._create_normal_score_func()
-        elif user_inputs.score_func == 'empirical':
-            self.score_func = self._create_empirical_score_func()
-
-
-    def _collect_all_raw_scores(self):
-        before = time()
-        self.primer_data = Specificity(self.user_inputs.fa, self.primer_data).primers
-        for primer in self.primer_data:
-            tm, entropy, gc = (self.tm_func(primer),
-                               raw_entropy(primer),
-                               raw_gc(primer))
-            specificity = self.primer_data[primer][0]
-            self.primer_data[primer] += [tm, entropy, gc]
-            self.combined_data['tm'].append(tm)
-            self.combined_data['entropy'].append(entropy)
-            self.combined_data['gc'].append(gc)
-            self.combined_data['specificity'].append(specificity)
-        logging.info("Finished collecting all raw data in %s"
-                     %(time() - before))
-
-
-
-
-
-
-#    def _score_all_primers(self, regions_ref_seqs, primer_length, primer_length_var):
-#        """
-#        After __init__ had finished parsing all user_inputs from commandline,
-#        it will call this method to obtain all possible primers from the 
-#        reference sequences provided by regions_ref_seqs and simultaneously
-#        compute their relevant properties and store them in a dictionary
-#        that map Sequence to tuples of their data.
-#        """
-#        before = time()
-#        num_distinct_primers = 0
-#        for region, ref_seq in regions_ref_seqs:
-#            for pos in range(len(ref_seq)):
-#                for var in range(-primer_length_var, primer_length_var +1):
-#                    primer = ref_seq[pos: pos + primer_length + var].upper()
-#                    if len(primer) == primer_length + var:
-#                        if primer not in self.primer_data:
-#                            num_distinct_primers += 1
-#                            tm, entropy, gc = (self.tm_func(primer), 
-#                                               raw_entropy(primer), 
-#                                               raw_gc(primer))
-#                            self.primer_data[primer] = [tm, entropy, gc]
-#                            self.combined_data['tm'].append(tm)
-#                            self.combined_data['entropy'].append(entropy)
-#                            self.combined_data['gc'].append(gc)
-#        if not num_distinct_primers > 0:
-#            logging.info("Warning: there is no primers to be scored")
-#            raise RuntimeError
-#        elif not all([len(lst) == num_distinct_primers for lst in self.combined_data.values()]):
-#            logging.info("Warning: The number of data point doesn't equal num primers")
-#            raise RuntimeError
-#        logging.info("Finished scoring all %i primers in %s seconds"
-#                     %(num_distinct_primers, time() - before))
-#
-    
-
-    def _create_normal_score_func(self):
-        """
-        Return a function object which assume normality in
-        distribution of primer data.
-        """
-        before = time()
-        mean_std = {}
-        for feature, data in self.combined_data.items():
-            mean_std[feature] = (mean(data), std(data))
-        logging.info("%s"%(str(mean_std)))
-        for primer in self.primer_data:
-            specificity, tm, entropy, gc = self.primer_data[primer]
-            scores = [normalised_distance(specificity, mean_std['specificity']),
-                      normalised_distance(tm, mean_std['tm']),
-                      normalised_distance(entropy, mean_std['entropy']),
-                      normalised_distance(gc, mean_std['gc'])]
-            primer_score = sum(scores)/ float(len(scores))
-            self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
-        scoring_function= lambda seq: self.primer_data[seq.upper()]
-        logging.info("Finished creating scoring function in %s"%(time() - before))
-        return scoring_function
-
-    def _build_quantile_lookup(self):
-        """
-        This private method is called to build a lookup table
-        for each scoring feature we are interested in. The lookup
-        table is of the form:
-            {feature: {scoring data : percentile} }
-        This data structure is intended to speed up the process
-        of scoring primers by looking up its percentile score.
-        """
-        # First we build the empirical distribution of each 
-        #!!! features of the primers (currently they're just
-        #!!! tm, entropy and gc). This amount to building up
-        #!!! a lookup list which is a function that map a 
-        #!!! value to the quantile it is in.
-        quantile_lookup = {'specificity':{}, 'tm':{}, 'entropy':{}, 'gc':{}}
-        for feature, data in self.combined_data.items():
-            data.sort()
-            num_data = float(len(data))
-            current_val = data[0]
-            quantile_lookup[feature][current_val] = 0.0 - 50.0
-            # There's always at least one data guaranteed by _score_all_primers
-            for index in range(1, len(data)):
-                next_val = data[index]
-                if next_val != current_val:
-                    quantile_lookup[feature][next_val] = index * 100.0/ num_data -50.0
-                    current_val = next_val
-        return quantile_lookup
-
-    def _create_empirical_score_func(self):
-        """
-        Returns a function object that maps primers to
-        their empirical percentile score.
-        """
-        before = time()
-        quantile_lookup = self._build_quantile_lookup()
-        missing_data_count = 0
-        for primer in self.primer_data:
-            try:
-                specificity, tm, entropy, gc = self.primer_data[primer]
-                scores = [quantile_lookup['specificity'][specificity],
-                          quantile_lookup['tm'][tm],
-                          quantile_lookup['entropy'][entropy],
-                          quantile_lookup['gc'][gc]]
-                primer_score = sum(scores) / float(len(scores))
-                self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
-            except:
-                missing_data_count += 1
-        scoring_function = lambda seq: self.primer_data[seq.upper()]
-        logging.info("Finished creating scoring function in %s"%(time() - before))
-        return scoring_function

@@ -13,8 +13,7 @@ import sys
 import logging
 import subprocess
 
-from utils import rev_complement, complement
-
+from utils import rev_complement
 DEFAULT_PRIMER_FASTA = './all_primers.fa'
 
 class Specificity(object):
@@ -59,10 +58,15 @@ def specificity_score(alignment_data):
     #!! should also include information about the match quality 
     #!! and the binding energy 
     if alignment_data["X0"] != None:
-        return -1 * alignment_data["X0"]
+        num_optimal_hits = alignment_data["X0"]
     else:
         sys.stderr.write("Warning: Num best hit not available\n")
         raise RuntimeError
+    if alignment_data["X1"] != None:
+        num_suboptimal_hits = alignment_data["X1"]
+    else:
+        num_suboptimal_hits = 0
+    return -1 * (num_optimal_hits + num_suboptimal_hits)
 
 
 #!! a bignumber is supplied to bwa samse -n option so that
@@ -92,7 +96,8 @@ def generate_alignment_files(reference_file, file_dir, file_name):
     bam_index = os.path.join(file_dir, file_name)
 
     with open(sai_file, 'w') as sai:
-        aln_process = subprocess.call(['bwa', 'aln', 
+        #!! Should ask user for number of threads??
+        aln_process = subprocess.call(['bwa', 'aln', '-t 2',
                                         reference_file, 
                                         fa_file],
                                         stdout=sai)
