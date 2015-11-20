@@ -5,6 +5,7 @@ import csv
 from Bio import SeqIO
 from utils import mean, std
 from primer_search import pick_primer_set, get_primer_seq
+import error
 
 def write_aux(aux_writer, searcher):
     """
@@ -525,7 +526,7 @@ def _merge_closeby_group(closeby_list):
         return closeby_list[0]
     else:
         logging.info('Error: Trying to merge empty list of regions')
-        raise ValueError
+        sys.exit(error.ERRORS['MERGE EMPTY LIST'])
 
 def _merge_name(name1, name2):
     """

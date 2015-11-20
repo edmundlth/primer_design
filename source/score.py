@@ -41,7 +41,7 @@ from Bio.SeqUtils.MeltingTemp import (Tm_NN,
                                       DNA_NN3, 
                                       DNA_NN4)
 from utils import weighted_num_complement, mean, std, normalised_distance 
-from specificity import Specificity
+from specificity import make_specificity_lookup
 
 # Nearest neighbor thermodynamic data for Tm prediction
 # from a Biopython module
@@ -134,7 +134,7 @@ class Score(object):
 
     def _collect_all_raw_scores(self, reference_fasta):
         before = time()
-        self.primer_data = Specificity(reference_fasta, self.primer_data).primers
+        self.primer_data = make_specificity_lookup(reference_fasta, self.primer_data)
         for primer in self.primer_data:
             tm, entropy, gc = (self.tm_func(primer),
                                raw_entropy(primer),
@@ -209,21 +209,17 @@ class Score(object):
         """
         before = time()
         quantile_lookup = self._build_quantile_lookup()
-        missing_data_count = 0
         for primer in self.primer_data:
-            try:
-                specificity, tm, entropy, gc = self.primer_data[primer]
-                individual_scores = \
-                         [quantile_lookup['specificity'][specificity],
-                          quantile_lookup['tm'][score_tm(tm, self.target_tm)],
-                          quantile_lookup['entropy'][entropy],
-                          quantile_lookup['gc'][gc]]
-                scores = [score * weight for score, weight 
-                          in zip(individual_scores, self.score_weights)]
-                primer_score = sum(scores) / float(sum(self.score_weights))
-                self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
-            except:
-                missing_data_count += 1
+            specificity, tm, entropy, gc = self.primer_data[primer]
+            individual_scores = \
+                     [quantile_lookup['specificity'][specificity],
+                      quantile_lookup['tm'][score_tm(tm, self.target_tm)],
+                      quantile_lookup['entropy'][entropy],
+                      quantile_lookup['gc'][gc]]
+            scores = [score * weight for score, weight 
+                      in zip(individual_scores, self.score_weights)]
+            primer_score = sum(scores) / float(sum(self.score_weights))
+            self.primer_data[primer] = [primer_score, specificity, tm, entropy, gc]
         scoring_function = lambda seq: self.primer_data[seq.upper()]
         logging.info("Finished creating scoring function in %s"%(time() - before))
         return scoring_function
@@ -237,7 +233,7 @@ def raw_entropy(seq):
     prob = [seq.count(base)/length for base in set(seq)]
     return - sum( p * log(p) for p in prob)
 
-def raw_max_hairpin(seq, direction='f'):
+def raw_max_hairpin(seq):
     """
     Hairpin prediction algorithm. 
     Currently returning just the maximum number of bond that is
@@ -246,13 +242,6 @@ def raw_max_hairpin(seq, direction='f'):
     folds onto itself.
     GC bond is weighted more than AT bond based on user_inputs.gc_weight
     """
-    if direction == 'f':
-        seq = self.sense_heel + seq
-    elif direction == 'r':
-        seq = self.antisense_heel + seq
-    else:
-        logging.info('Warning: primer_direction not specified for hairpin prediction')
-        raise ValueError
     length = len(seq)
     score = 0
     loop_size = 3
@@ -319,13 +308,6 @@ def raw_run(seq):
         max_run = run
     return max_run
 
-LARGE_NUMBER = 100000
-def score_tm(tm, target_tm):
-    del_tm = tm - target_tm
-    if del_tm != 0.0:
-        return 1/abs(del_tm)
-    else:
-        return LARGE_NUMBER
 #################### Utilities ##################################
 
 def get_all_primers(regions_and_ref_seqs, primer_length, primer_length_var):
@@ -347,7 +329,20 @@ def get_all_primers(regions_and_ref_seqs, primer_length, primer_length_var):
     logging.info("Number of all possible primers: %i"%num_distinct_primers)
     return all_primers
 
-
+LARGE_NUMBER = 100000.0
+def score_tm(tm, target_tm):
+    """
+    give a score to a particular tm value
+    with respect to the target_tm.
+        score = 1 / |target_tm - tm|
+    The closer tm is to target_tm, the
+    higher the score.
+    """
+    del_tm = tm - target_tm
+    if del_tm != 0.0:
+        return 1.0 / abs(del_tm)
+    else: # handles ZerodivisionError
+        return LARGE_NUMBER
 
 
 ####################
